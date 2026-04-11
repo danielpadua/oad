@@ -1,0 +1,30 @@
+# Compiled binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+*.test
+coverage.out
+coverage.html
+
+# Build cache (do not version the local build cache)
+.cache/
+
+# IDE and editor directories
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment files — NEVER commit secrets
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db

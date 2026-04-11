@@ -1,0 +1,52 @@
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck       # unchecked errors
+    - govet          # go vet checks
+    - staticcheck    # comprehensive static analysis (replaces golint)
+    - unused         # unused code
+    - ineffassign    # ineffectual assignments
+    - gosec          # security issues (OWASP alignment)
+    - gocyclo        # cyclomatic complexity guard
+    - misspell       # common spelling mistakes
+    - unparam        # always-constant function parameters
+    - gocritic       # opinionated style and diagnostic checks
+    - gofumpt        # stricter formatting than gofmt
+    - exhaustive     # exhaustive switch/map on enum types
+    - noctx          # HTTP requests without context
+    - bodyclose      # unclosed HTTP response bodies
+    - sqlclosecheck  # unclosed sql.Rows / sql.Stmt
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+
+  gosec:
+    excludes:
+      - G104  # unhandled errors already caught by errcheck
+
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+    disabled-checks:
+      - commentedOutCode
+
+  exhaustive:
+    default-signifies-exhaustive: true
+
+  gofumpt:
+    extra-rules: true
+
+issues:
+  exclude-rules:
+    # Test files: relax security and unused-param checks
+    - path: _test\.go
+      linters:
+        - gosec
+        - unparam
+
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -1,0 +1,22 @@
+# Source control
+.git/
+.github/
+
+# Development artifacts
+bin/
+coverage.out
+coverage.html
+.cache/
+
+# Documentation (not needed in runtime image)
+docs/
+
+# Editor and OS files
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Environment files
+.env
+.env.*
