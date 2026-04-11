@@ -42,8 +42,8 @@ func Load() (*Config, error) {
 		},
 		Database: DatabaseConfig{
 			URL:      dbURL,
-			MaxConns: int32(getEnvInt("DB_MAX_CONNS", 25)),
-			MinConns: int32(getEnvInt("DB_MIN_CONNS", 5)),
+			MaxConns: getEnvInt32("DB_MAX_CONNS", 25),
+			MinConns: getEnvInt32("DB_MIN_CONNS", 5),
 		},
 	}, nil
 }
@@ -59,6 +59,15 @@ func getEnvInt(key string, defaultVal int) int {
 	if v := os.Getenv(key); v != "" {
 		if i, err := strconv.Atoi(v); err == nil {
 			return i
+		}
+	}
+	return defaultVal
+}
+
+func getEnvInt32(key string, defaultVal int32) int32 {
+	if v := os.Getenv(key); v != "" {
+		if i, err := strconv.ParseInt(v, 10, 32); err == nil {
+			return int32(i)
 		}
 	}
 	return defaultVal

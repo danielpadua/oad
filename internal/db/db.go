@@ -41,7 +41,7 @@ func Connect(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.Pool, err
 // Migrate applies any pending up-migrations from the embedded SQL files.
 // It is idempotent: calling it when no migrations are pending is a no-op.
 // migrationsFS must be the embed.FS containing the migrations directory.
-func Migrate(dbURL string, migrationsFS fs.FS) error {
+func Migrate(dbURL string, migrationsFS fs.FS) (retErr error) {
 	src, err := iofs.New(migrationsFS, ".")
 	if err != nil {
 		return fmt.Errorf("creating migration source: %w", err)
@@ -51,7 +51,12 @@ func Migrate(dbURL string, migrationsFS fs.FS) error {
 	if err != nil {
 		return fmt.Errorf("initializing migrator: %w", err)
 	}
-	defer m.Close()
+	defer func() {
+		_, closeErr := m.Close()
+		if retErr == nil && closeErr != nil {
+			retErr = fmt.Errorf("closing migrator: %w", closeErr)
+		}
+	}()
 
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return fmt.Errorf("running migrations: %w", err)
