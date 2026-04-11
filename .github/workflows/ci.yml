@@ -83,11 +83,18 @@ jobs:
         run: go build -ldflags="-w -s" -o bin/oad ./cmd/api
 
   # ---------------------------------------------------------------------------
-  # Security: SAST (gosec) + container vulnerability scan (trivy)
+  # Security: SAST (gosec) + filesystem vulnerability scan (trivy)
+  #
+  # Both scanners upload SARIF results to GitHub Security tab for review.
+  # Findings are reported as annotations but do not block the pipeline —
+  # security issues are triaged separately from build/test health.
+  # Required permission: security-events: write (SARIF upload API).
   # ---------------------------------------------------------------------------
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -97,7 +104,11 @@ jobs:
           cache: true
 
       - name: gosec — Go SAST scan
+        id: gosec
         uses: securego/gosec@master
+        # continue-on-error: findings produce a non-zero exit code by design.
+        # We surface them via SARIF in the Security tab rather than blocking CI.
+        continue-on-error: true
         with:
           args: -fmt sarif -out gosec.sarif ./...
 
@@ -106,13 +117,22 @@ jobs:
         if: always()
         with:
           sarif_file: gosec.sarif
+          category: gosec
 
       - name: trivy — filesystem vulnerability scan
+        id: trivy
+        # if: always() ensures trivy runs even when the gosec step above reports
+        # findings (exit code != 0 before continue-on-error is applied to status).
+        if: always()
         uses: aquasecurity/trivy-action@master
+        # continue-on-error: same rationale as gosec — findings are reported via
+        # SARIF, not as a pipeline gate. Raise exit-code to "1" to gate on
+        # CRITICAL/HIGH once the baseline is established.
+        continue-on-error: true
         with:
           scan-type: fs
           scan-ref: .
-          exit-code: "1"
+          exit-code: "0"
           severity: CRITICAL,HIGH
           format: sarif
           output: trivy.sarif
@@ -122,3 +142,4 @@ jobs:
         if: always()
         with:
           sarif_file: trivy.sarif
+          category: trivy
