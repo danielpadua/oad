@@ -73,10 +73,28 @@ A registered application or service whose authorization data is managed in OAD:
 
 System-specific properties and relations layered on top of global entities:
 
-- **Property overlays** — a system can attach additional properties to a global entity (e.g., System "Credit" adds `max_approval: 500000` to user "Daniel" without modifying his global properties).
+- **Property overlays** — a system can attach additional properties to a global entity (e.g., System "Credit" adds `credit.max_approval: 500000` to user "Daniel" without modifying his global properties).
 - **System-scoped relations** — a relation can optionally be scoped to a system (e.g., Daniel --member--> Approver is true only within System "Credit").
 
-When a PDP requests an entity in a system context, the response is a **merged view**: global properties + system overlay properties, global relations + system-scoped relations.
+When a PDP requests an entity in a system context, the response is a **merged view**: global properties + namespaced system overlay properties, global relations + system-scoped relations.
+
+##### System Overlay Schema
+
+Controls which overlay properties a system is allowed to attach to entities of a given type:
+
+- `system` → System — the system this schema applies to.
+- `entity_type` → Entity Type Definition — the entity type this schema governs.
+- `allowed_overlay_properties` (JSON Schema) — validates which overlay properties this system can add to entities of this type.
+
+Each system must declare its overlay schema per entity type before attaching properties. This prevents attribute pollution, type mismatches, and unauthorized property injection.
+
+##### Overlay Property Namespace
+
+All overlay property keys must be prefixed with the system's name as a namespace (e.g., `credit.max_approval`, `hr.cost_center`). This convention:
+
+- **Prevents key collisions** — overlay properties can never shadow or override global properties, since global properties use unprefixed keys.
+- **Enables attribution** — when viewing a merged entity, it is immediately clear which system contributed each property.
+- **Simplifies merge** — the merge operation becomes a simple union of disjoint key sets rather than a conflict-resolution problem.
 
 ##### Entity Type Definition (Schema)
 
@@ -93,7 +111,8 @@ Declares what entity types exist and constrains their structure:
 ```
 Entity(type=user, id=daniel, properties={clearance: "L3"})
 Entity(type=document, id=doc-123, properties={sensitivity: "L2"})
-→ PDP queries properties of both entities and evaluates the policy.
+Overlay(system=credit, entity=daniel, properties={credit.max_approval: 500000})
+→ PDP queries global properties + namespaced overlay properties and evaluates the policy.
 ```
 
 **RBAC** — "Allow if subject has role approver with permission approve_credit":
@@ -133,6 +152,8 @@ Relation(daniel --owner--> doc-123)            [system: credit]
 - System overlays (additional properties and system-scoped relations) are managed by product teams within their system scope.
 - Bulk import endpoint for initial loads and batch updates from authoritative sources.
 - Validation against Entity Type Definitions — reject entities with undeclared properties or invalid relations at the boundary.
+- Validation of overlay properties against the System Overlay Schema — reject overlays with undeclared or mistyped properties.
+- Overlay property keys must be namespaced with the system name (e.g., `credit.max_approval`) — enforced at the ingestion boundary.
 
 **Entity & Relation Retrieval**
 - Lookup by entity type + external ID, optionally within a system context (returns merged global + overlay view).
@@ -184,6 +205,7 @@ These will be detailed in the requirements document, but the MVP targets:
 | **Multi-tenancy model** | Global entities + system-scoped overlays | Avoids data duplication for shared entities (users, groups); product teams manage only their system-specific properties and relations |
 | **Storage engine** | PostgreSQL | Relational model supports ad-hoc queries, secondary indexes, row-level security, and proven HA/replication; avoids bbolt single-process limitation |
 | **Entity schema** | Dynamic Entity Type Definitions with JSON Schema validation + JSONB properties | New properties and relation types can be declared without schema migrations; essential for a multi-tenant attribute store |
+| **Overlay schema** | Per-system, per-entity-type overlay schemas with namespaced property keys | Each system declares what overlay properties it can add; namespace prefix prevents key collision with global properties and cross-system ambiguity |
 | **Sync mechanism** | Not owned — expose changelog + webhooks + bulk export | Each PDP ecosystem has its own sync tooling; coupling to one kills agnosticity |
 | **Audit strategy** | Append-only audit table with retrieval logging | Compliance requirement; immutable by design |
 
@@ -195,7 +217,7 @@ These will be detailed in the requirements document, but the MVP targets:
 | Low adoption due to "just another auth tool" perception | Wasted effort | Clear positioning as PIP-only (not a PDP); target teams already running OPA/Cedar/Topaz who lack a central attribute store |
 | Property schema flexibility vs. query performance | Slow filtered queries on dynamic properties | JSONB with GIN indexes for flexible properties; dedicated columns for high-cardinality lookups |
 | Multi-tenant data leakage via overlays | Security incident | Row-level security in PostgreSQL; mandatory system_id on overlay/relation queries; integration tests that assert cross-system isolation |
-| Overlay merge complexity | Conflicting or ambiguous property resolution | Clear merge rule: system overlay wins over global for same key; documented and enforced in the retrieval API |
+| Overlay merge complexity | Conflicting or ambiguous property resolution | Namespaced overlay keys (e.g., `credit.max_approval`) eliminate collisions with global properties; merge is a union of disjoint key sets, not a conflict resolution |
 
 ### 7. Success Criteria (MVP)
 
@@ -203,3 +225,12 @@ These will be detailed in the requirements document, but the MVP targets:
 - Two independent systems can manage their overlays and system-scoped relations in isolation through the management UI, while sharing global entities.
 - Every mutation (entity, property, relation, overlay) is recorded in the audit log with before/after values.
 - The changelog API enables incremental sync without full data reload.
+
+---
+
+## Revision History
+
+| Version | Date | Changes |
+|---|---|---|
+| 0.1 | 2026-04-10 | Initial draft — problem statement, audience, MVP scope, entities, architectural decisions |
+| 0.2 | 2026-04-10 | Add System Overlay Schema and namespace convention for overlay properties; update ABAC example, ingestion scope, architectural decisions, and risk mitigations |
