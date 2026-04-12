@@ -17,7 +17,6 @@ func Recovery(next http.Handler) http.Handler {
 			if rec := recover(); rec != nil {
 				slog.ErrorContext(r.Context(), "panic recovered",
 					"panic", rec,
-					"correlation_id", GetCorrelationID(r.Context()),
 					"method", r.Method,
 					"path", r.URL.Path,
 				)

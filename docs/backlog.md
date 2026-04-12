@@ -21,13 +21,13 @@
 
 ### Phase 1 — Cross-Cutting Middleware
 
-12. [ ] Authentication middleware: JWT validation (lestrrat-go/jwx) + mTLS support
-13. [ ] Authorization middleware: role extraction and system-scope verification from JWT claims
-14. [ ] RLS session setup middleware: `SET LOCAL app.current_system_id` per request
-15. [ ] Audit log service: transactional write audit within the same DB transaction as the business operation
-16. [ ] Structured logging: slog (JSON output) with correlation ID middleware
-17. [ ] Input validation framework: reusable JSON Schema validation engine (santhosh-tekuri/jsonschema)
-18. [ ] Prometheus metrics middleware: request count, latency histograms, error rates on `/metrics`
+12. [x] Authentication middleware: JWT validation (lestrrat-go/jwx) + mTLS support
+13. [x] Authorization middleware: role extraction and system-scope verification from JWT claims
+14. [x] RLS session setup helper: `set_config('app.current_system_id', $1, true)` transactional scope
+15. [x] Audit log service: transactional write audit within the same DB transaction as the business operation
+16. [x] Structured logging: slog (JSON output) with context-aware handler (correlation ID, actor, system_id)
+17. [x] Input validation framework: reusable JSON Schema validation engine (santhosh-tekuri/jsonschema)
+18. [x] Prometheus metrics middleware: request count, latency histograms, error rates on `/metrics`
 
 ### Phase 2 — Schema Registry (Entity Types, Systems, Overlay Schemas)
 

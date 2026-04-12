@@ -11,18 +11,26 @@ import (
 	"time"
 
 	"github.com/danielpadua/oad/internal/api"
+	"github.com/danielpadua/oad/internal/api/middleware"
+	"github.com/danielpadua/oad/internal/auth"
 	"github.com/danielpadua/oad/internal/config"
 	"github.com/danielpadua/oad/internal/db"
+	"github.com/danielpadua/oad/internal/logging"
 	"github.com/danielpadua/oad/migrations"
 )
 
 func main() {
-	// Initialize structured JSON logger as the global default.
-	// All application code uses slog.*Context so correlation IDs propagate
-	// through log entries automatically (NFR-OPS-002).
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	// Initialize structured JSON logger with context-aware enrichment.
+	// The ContextHandler automatically injects correlation_id (and later
+	// actor/system_id) into every log record from the request context,
+	// so callers only need slog.*Context — no manual attribute passing.
+	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
-	}))
+	})
+	logger := slog.New(logging.NewContextHandler(jsonHandler,
+		middleware.CorrelationIDExtractor,
+		auth.IdentityExtractor,
+	))
 	slog.SetDefault(logger)
 
 	if err := run(); err != nil {
@@ -53,10 +61,30 @@ func run() error {
 
 	slog.Info("migrations applied successfully")
 
+	// Initialize authenticators based on configured auth mode.
+	var jwtAuth *auth.JWTAuthenticator
+	var mtlsAuth *auth.MTLSAuthenticator
+
+	switch cfg.Auth.Mode {
+	case "jwt", "both":
+		var err error
+		jwtAuth, err = auth.NewJWTAuthenticator(ctx, cfg.Auth.JWKSURL, cfg.Auth.JWTAudience, cfg.Auth.JWTIssuer)
+		if err != nil {
+			return fmt.Errorf("initializing JWT authenticator: %w", err)
+		}
+		if cfg.Auth.Mode == "both" {
+			mtlsAuth = auth.NewMTLSAuthenticator(cfg.Auth.MTLSHeader)
+		}
+	case "mtls":
+		mtlsAuth = auth.NewMTLSAuthenticator(cfg.Auth.MTLSHeader)
+	}
+
 	router := api.NewRouter(api.Dependencies{
-		DB:     pool,
-		Config: cfg,
-		Logger: slog.Default(),
+		DB:       pool,
+		Config:   cfg,
+		Logger:   slog.Default(),
+		JWTAuth:  jwtAuth,
+		MTLSAuth: mtlsAuth,
 	})
 
 	srv := &http.Server{

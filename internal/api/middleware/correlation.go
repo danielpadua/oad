@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -37,4 +38,13 @@ func GetCorrelationID(ctx context.Context) string {
 		return id
 	}
 	return ""
+}
+
+// CorrelationIDExtractor is a logging.ContextExtractor that injects the
+// correlation_id attribute into every log record automatically.
+func CorrelationIDExtractor(ctx context.Context) []slog.Attr {
+	if id := GetCorrelationID(ctx); id != "" {
+		return []slog.Attr{slog.String("correlation_id", id)}
+	}
+	return nil
 }

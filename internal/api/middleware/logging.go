@@ -33,7 +33,6 @@ func RequestLogger(next http.Handler) http.Handler {
 			"path", r.URL.Path,
 			"status", wrapped.statusCode,
 			"duration_ms", time.Since(start).Milliseconds(),
-			"correlation_id", GetCorrelationID(r.Context()),
 			"remote_addr", r.RemoteAddr,
 		)
 	})

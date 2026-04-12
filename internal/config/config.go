@@ -12,6 +12,7 @@ import (
 type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
+	Auth     AuthConfig
 }
 
 type ServerConfig struct {
@@ -26,12 +27,44 @@ type DatabaseConfig struct {
 	MinConns int32
 }
 
+// AuthConfig controls how the API authenticates incoming requests.
+// Mode selects which credential types are accepted: "jwt", "mtls", or "both".
+type AuthConfig struct {
+	Mode        string // AUTH_MODE: "jwt" (default), "mtls", or "both"
+	JWKSURL     string // JWKS_URL: required when mode includes jwt
+	JWTAudience string // JWT_AUDIENCE: expected "aud" claim
+	JWTIssuer   string // JWT_ISSUER: expected "iss" claim
+	MTLSHeader  string // MTLS_HEADER: header name for LB-terminated mTLS (default: X-Client-Cert)
+}
+
 // Load reads configuration from environment variables.
 // Returns an error if any required variable is missing or invalid.
 func Load() (*Config, error) {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
+	}
+
+	authMode := getEnvStr("AUTH_MODE", "jwt")
+
+	authCfg := AuthConfig{
+		Mode:        authMode,
+		JWKSURL:     os.Getenv("JWKS_URL"),
+		JWTAudience: os.Getenv("JWT_AUDIENCE"),
+		JWTIssuer:   os.Getenv("JWT_ISSUER"),
+		MTLSHeader:  getEnvStr("MTLS_HEADER", "X-Client-Cert"),
+	}
+
+	if authMode == "jwt" || authMode == "both" {
+		if authCfg.JWKSURL == "" {
+			return nil, fmt.Errorf("JWKS_URL is required when AUTH_MODE is %q", authMode)
+		}
+		if authCfg.JWTAudience == "" {
+			return nil, fmt.Errorf("JWT_AUDIENCE is required when AUTH_MODE is %q", authMode)
+		}
+		if authCfg.JWTIssuer == "" {
+			return nil, fmt.Errorf("JWT_ISSUER is required when AUTH_MODE is %q", authMode)
+		}
 	}
 
 	return &Config{
@@ -45,6 +78,7 @@ func Load() (*Config, error) {
 			MaxConns: getEnvInt32("DB_MAX_CONNS", 25),
 			MinConns: getEnvInt32("DB_MIN_CONNS", 5),
 		},
+		Auth: authCfg,
 	}, nil
 }
 

@@ -7,7 +7,7 @@ BINARY         := bin/oad
 GO_BUILD_FLAGS := -ldflags="-w -s"
 DATABASE_URL   ?= postgresql://oad:oad@localhost:5432/oad?sslmode=disable
 
-.PHONY: build dev dev-db test test-cover lint clean \
+.PHONY: build dev dev-db dev-token test test-cover lint clean \
         migrate-up migrate-down migrate-status \
         docker-build
 
@@ -31,6 +31,18 @@ dev:
 ## dev-db: Start only the PostgreSQL container
 dev-db:
 	docker compose up postgres
+
+# Token defaults (overridable: make dev-token SUB=alice ROLES='["viewer"]')
+SUB       ?= admin@example.com
+ROLES     ?= ["admin","editor"]
+SYSTEM_ID ?= 550e8400-e29b-41d4-a716-446655440000
+
+## dev-token: Mint a JWT from the stub JWKS server (requires jwks-stub running)
+dev-token:
+	@curl -s -X POST http://localhost:9090/token \
+		-H 'Content-Type: application/json' \
+		-d '{"sub":"$(SUB)","oad_roles":$(ROLES),"oad_system_id":"$(SYSTEM_ID)"}' \
+		| python3 -m json.tool
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Testing

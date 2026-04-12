@@ -9,10 +9,33 @@ services:
       DATABASE_URL: "postgresql://oad:oad@postgres:5432/oad?sslmode=disable"
       SERVER_HOST: "0.0.0.0"
       SERVER_PORT: "8080"
+      AUTH_MODE: "jwt"
+      JWKS_URL: "http://jwks-stub:9090/.well-known/jwks.json"
+      JWT_ISSUER: "http://jwks-stub:9090"
+      JWT_AUDIENCE: "oad-api"
     depends_on:
       postgres:
         condition: service_healthy
+      jwks-stub:
+        condition: service_healthy
     restart: on-failure
+
+  jwks-stub:
+    build:
+      context: .
+      dockerfile: Dockerfile.devtools
+    ports:
+      - "9090:9090"
+    environment:
+      JWKS_PORT: "9090"
+      JWT_ISSUER: "http://jwks-stub:9090"
+      JWT_AUDIENCE: "oad-api"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9090/health || exit 1"]
+      interval: 3s
+      timeout: 2s
+      retries: 5
+    restart: unless-stopped
 
   postgres:
     image: postgres:15-alpine
