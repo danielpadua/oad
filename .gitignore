@@ -24,7 +24,8 @@ go.work.sum
 
 # IDE and editor directories (VS Code, JetBrains, Vim)
 .idea/
-.vscode/
+.vscode/*
+!.vscode/settings.json
 *.swp
 *.swo
 *~

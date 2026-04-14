@@ -191,4 +191,7 @@ The initial migration (`000001_initial_schema.up.sql`) creates:
 - **Validation**: use `validation.Compile` + `Validator.Validate` for JSON Schema checks. Use `ValidateIsJSONSchema` to validate schema-of-schemas.
 - **Transactions**: use `db.WithAuthScope` for RLS-scoped DB operations. It extracts `system_id` from the request context automatically.
 - **Testing**: unit tests use `httptest.Server` for JWKS simulation. The CI pipeline has a real PostgreSQL service for integration tests.
-- **Formatting**: gofumpt (stricter than gofmt). The golangci-lint config enforces this.
+- **Formatting**: gofumpt (stricter than gofmt). The golangci-lint config enforces this in CI.
+  A `.vscode/settings.json` is committed to the repo and configures `gopls` to use gofumpt
+  automatically on save (`"formatting.gofumpt": true`). Install the **Go** extension
+  (`golang.go`) for this to take effect — no additional setup required.

@@ -1,0 +1,31 @@
+{
+  // Go toolchain
+  "[go]": {
+    "editor.defaultFormatter": "golang.go",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
+  "[go.mod]": {
+    "editor.defaultFormatter": "golang.go",
+    "editor.formatOnSave": true
+  },
+
+  // gopls — use gofumpt instead of gofmt so the editor enforces the same
+  // stricter formatting rules checked by golangci-lint in CI.
+  // Import grouping (stdlib / third-party / internal) is also enforced here.
+  "gopls": {
+    "formatting.gofumpt": true,
+    "ui.semanticTokens": true
+  },
+
+  // File nesting for cleaner Explorer view
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.patterns": {
+    "*.go": "${capture}_test.go",
+    "go.mod": "go.sum",
+    "docker-compose.yml": "docker-compose.*.yml, Dockerfile, Dockerfile.*",
+    ".golangci.yml": ".editorconfig, .gitignore, .gitattributes"
+  }
+}
