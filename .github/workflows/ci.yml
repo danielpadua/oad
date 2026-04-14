@@ -21,6 +21,18 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Install gofumpt
+        run: go install mvdan.cc/gofumpt@latest
+
+      - name: Check formatting (gofumpt)
+        run: |
+          UNFORMATTED=$(gofumpt -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "Unformatted files:"
+            echo "$UNFORMATTED"
+            exit 1
+          fi
+
       - uses: golangci/golangci-lint-action@v9
         with:
           version: latest

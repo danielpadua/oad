@@ -85,6 +85,7 @@ docs/                      # Design documents: spec, data model, component/seque
 # Build and run commands
 
 ```bash
+make setup              # Install git hooks (run once after cloning)
 make build              # Compile API binary to ./bin/oad
 make dev                # docker compose up --build (API + PostgreSQL + JWKS stub)
 make dev-db             # Start only the PostgreSQL container

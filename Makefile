@@ -7,7 +7,7 @@ BINARY         := bin/oad
 GO_BUILD_FLAGS := -ldflags="-w -s"
 DATABASE_URL   ?= postgresql://oad:oad@localhost:5432/oad?sslmode=disable
 
-.PHONY: build dev dev-db dev-token test test-cover lint clean \
+.PHONY: build dev dev-db dev-token test test-cover lint setup clean \
         migrate-up migrate-down migrate-status \
         docker-build
 
@@ -64,6 +64,16 @@ test-cover:
 ## lint: Run golangci-lint (requires golangci-lint to be installed)
 lint:
 	golangci-lint run ./...
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Setup
+# ──────────────────────────────────────────────────────────────────────────────
+
+## setup: Install git hooks via core.hooksPath (run once after cloning)
+setup:
+	git config core.hooksPath .githooks
+	@echo "Git hooks installed: .githooks/pre-commit is now active."
+	@echo "Note: .git/hooks/pre-commit is superseded and can be removed."
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Migrations (requires golang-migrate CLI)
