@@ -49,7 +49,7 @@ func parsePagination(r *http.Request) (limit, offset int) {
 			offset = n
 		}
 	}
-	return
+	return limit, offset
 }
 
 // queryUUID parses a named query parameter as a UUID pointer.
