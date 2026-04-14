@@ -37,6 +37,42 @@
       "value": "",
       "type": "default",
       "enabled": true
+    },
+    {
+      "key": "role_type_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "group_type_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "entity_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "role_entity_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "group_entity_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "relation_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
     }
   ],
   "_postman_variable_scope": "environment",

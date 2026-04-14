@@ -33,6 +33,10 @@ type Dependencies struct {
 	EntityTypeHandler    *handler.EntityTypeHandler
 	SystemHandler        *handler.SystemHandler
 	OverlaySchemaHandler *handler.OverlaySchemaHandler
+
+	// Phase 3 handlers — Entity & Relation Management
+	EntityHandler   *handler.EntityHandler
+	RelationHandler *handler.RelationHandler
 }
 
 // NewRouter constructs the Chi router with all middleware and routes registered.
@@ -69,7 +73,7 @@ func NewRouter(deps Dependencies) http.Handler {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(middleware.Authentication(deps.JWTAuth, deps.MTLSAuth, deps.Config.Auth.Mode))
 
-		// Phase 2 — Schema Registry
+		// ── Phase 2 — Schema Registry ────────────────────────────────────
 		// All schema registry endpoints require the "admin" role.
 
 		// Entity type definitions: global schema registry.
@@ -83,7 +87,6 @@ func NewRouter(deps Dependencies) http.Handler {
 		})
 
 		// Systems and their overlay schemas.
-		// {system_id} is shared across system and overlay-schema sub-routes.
 		r.Route("/systems", func(r chi.Router) {
 			r.Use(middleware.RequireRole("admin"))
 			r.Get("/", deps.SystemHandler.List)
@@ -101,6 +104,43 @@ func NewRouter(deps Dependencies) http.Handler {
 					r.Put("/{schema_id}", deps.OverlaySchemaHandler.Update)
 					r.Delete("/{schema_id}", deps.OverlaySchemaHandler.Delete)
 				})
+			})
+		})
+
+		// ── Phase 3 — Entity & Relation Management ────────────────────────
+
+		// Entities: typed nodes in the authorization graph.
+		// Literal sub-paths (/lookup, /bulk) are registered before /{entity_id}
+		// so chi's radix tree resolves them as literals, not path parameters.
+		r.Route("/entities", func(r chi.Router) {
+			// Exact lookup by type + external_id (no role restriction — any
+			// authenticated caller may look up entities, e.g., a PDP).
+			r.Get("/lookup", deps.EntityHandler.Lookup)
+
+			// Write operations require at least editor role.
+			r.With(middleware.RequireAnyRole("admin", "editor")).Post("/bulk", deps.EntityHandler.BulkCreate)
+			r.With(middleware.RequireAnyRole("admin", "editor")).Post("/", deps.EntityHandler.Create)
+
+			// List is open to all authenticated roles.
+			r.Get("/", deps.EntityHandler.List)
+
+			r.Route("/{entity_id}", func(r chi.Router) {
+				r.Get("/", deps.EntityHandler.GetByID)
+				r.With(middleware.RequireAnyRole("admin", "editor")).Patch("/", deps.EntityHandler.Update)
+				r.With(middleware.RequireAnyRole("admin", "editor")).Delete("/", deps.EntityHandler.Delete)
+
+				// Relations of this entity (FR-REL-005).
+				r.Get("/relations", deps.RelationHandler.ListByEntity)
+			})
+		})
+
+		// Relations: directed edges between entities.
+		r.Route("/relations", func(r chi.Router) {
+			r.With(middleware.RequireAnyRole("admin", "editor")).Post("/", deps.RelationHandler.Create)
+
+			r.Route("/{relation_id}", func(r chi.Router) {
+				r.Get("/", deps.RelationHandler.GetByID)
+				r.With(middleware.RequireAnyRole("admin", "editor")).Delete("/", deps.RelationHandler.Delete)
 			})
 		})
 	})
