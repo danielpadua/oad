@@ -25,7 +25,7 @@ type Dependencies struct {
 	DB              *pgxpool.Pool
 	Config          *config.Config
 	Logger          *slog.Logger
-	MetricsRegistry prometheus.Registerer  // nil defaults to prometheus.DefaultRegisterer
+	MetricsRegistry prometheus.Registerer // nil defaults to prometheus.DefaultRegisterer
 	JWTAuth         *auth.JWTAuthenticator // nil when AUTH_MODE is "mtls"
 	MTLSAuth        *auth.MTLSAuthenticator // nil when AUTH_MODE is "jwt"
 

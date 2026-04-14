@@ -7,8 +7,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/danielpadua/oad/internal/apierr"
 	"github.com/danielpadua/oad/internal/api/response"
+	"github.com/danielpadua/oad/internal/apierr"
 )
 
 // decodeJSON deserializes the JSON request body into dst.
