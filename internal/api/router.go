@@ -19,15 +19,20 @@ import (
 )
 
 // Dependencies holds all external dependencies injected into the HTTP layer.
-// Using an explicit struct instead of individual parameters makes the
+// Using an explicit struct instead of individual parameters keeps the
 // constructor signature stable as the application grows.
 type Dependencies struct {
 	DB              *pgxpool.Pool
 	Config          *config.Config
 	Logger          *slog.Logger
-	MetricsRegistry prometheus.Registerer   // nil defaults to prometheus.DefaultRegisterer
-	JWTAuth         *auth.JWTAuthenticator  // nil when AUTH_MODE is "mtls"
+	MetricsRegistry prometheus.Registerer  // nil defaults to prometheus.DefaultRegisterer
+	JWTAuth         *auth.JWTAuthenticator // nil when AUTH_MODE is "mtls"
 	MTLSAuth        *auth.MTLSAuthenticator // nil when AUTH_MODE is "jwt"
+
+	// Phase 2 handlers — Schema Registry
+	EntityTypeHandler    *handler.EntityTypeHandler
+	SystemHandler        *handler.SystemHandler
+	OverlaySchemaHandler *handler.OverlaySchemaHandler
 }
 
 // NewRouter constructs the Chi router with all middleware and routes registered.
@@ -60,11 +65,44 @@ func NewRouter(deps Dependencies) http.Handler {
 	r.Get("/health", healthHandler.Get)
 	r.Get("/metrics", promhttp.Handler().ServeHTTP)
 
-	// /api/v1 hosts all domain endpoints (Phases 2–6).
-	// Authentication is required for every request in this group.
+	// /api/v1 — all domain endpoints require authentication.
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(middleware.Authentication(deps.JWTAuth, deps.MTLSAuth, deps.Config.Auth.Mode))
-		// Phase 2+: domain routes and per-group authz middleware registered here.
+
+		// Phase 2 — Schema Registry
+		// All schema registry endpoints require the "admin" role.
+
+		// Entity type definitions: global schema registry.
+		r.Route("/entity-types", func(r chi.Router) {
+			r.Use(middleware.RequireRole("admin"))
+			r.Get("/", deps.EntityTypeHandler.List)
+			r.Post("/", deps.EntityTypeHandler.Create)
+			r.Get("/{type_id}", deps.EntityTypeHandler.GetByID)
+			r.Put("/{type_id}", deps.EntityTypeHandler.Update)
+			r.Delete("/{type_id}", deps.EntityTypeHandler.Delete)
+		})
+
+		// Systems and their overlay schemas.
+		// {system_id} is shared across system and overlay-schema sub-routes.
+		r.Route("/systems", func(r chi.Router) {
+			r.Use(middleware.RequireRole("admin"))
+			r.Get("/", deps.SystemHandler.List)
+			r.Post("/", deps.SystemHandler.Create)
+
+			r.Route("/{system_id}", func(r chi.Router) {
+				r.Get("/", deps.SystemHandler.GetByID)
+				r.Patch("/", deps.SystemHandler.Patch)
+
+				// Overlay schemas nested under their owning system.
+				r.Route("/overlay-schemas", func(r chi.Router) {
+					r.Get("/", deps.OverlaySchemaHandler.List)
+					r.Post("/", deps.OverlaySchemaHandler.Create)
+					r.Get("/{schema_id}", deps.OverlaySchemaHandler.GetByID)
+					r.Put("/{schema_id}", deps.OverlaySchemaHandler.Update)
+					r.Delete("/{schema_id}", deps.OverlaySchemaHandler.Delete)
+				})
+			})
+		})
 	})
 
 	return r

@@ -31,9 +31,9 @@
 
 ### Phase 2 — Schema Registry (Entity Types, Systems, Overlay Schemas)
 
-19. [ ] CRUD `entity_type_definition` — FR-ETD-001..004 (type_name, allowed_properties JSON Schema validation, allowed_relations, scope)
-20. [ ] CRUD `system` — FR-SYS-001..003 (register, update metadata, deactivate without data deletion)
-21. [ ] CRUD `system_overlay_schema` — FR-OVS-001..005 (JSON Schema validation, namespace prefix enforcement per system name)
+19. [x] CRUD `entity_type_definition` — FR-ETD-001..004 (type_name, allowed_properties JSON Schema validation, allowed_relations, scope)
+20. [x] CRUD `system` — FR-SYS-001..003 (register, update metadata, deactivate without data deletion)
+21. [x] CRUD `system_overlay_schema` — FR-OVS-001..005 (JSON Schema validation, namespace prefix enforcement per system name)
 
 ### Phase 3 — Entity & Relation Management
 

@@ -1,0 +1,765 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2026-04-13T14:38:00.000Z",
+  "__export_source": "oad.phase2",
+  "resources": [
+    {
+      "_id": "wrk_oad",
+      "parentId": null,
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "OAD — Open Authoritative Directory",
+      "description": "Phase 2 — Schema Registry (Entity Types, Systems, Overlay Schemas)\n\nFluxo rápido para testes locais:\n  1. Suba a stack: make dev\n  2. Execute \"Mint Token — admin\" na pasta Dev Tokens\n  3. O bearer_token do ambiente é preenchido automaticamente via response chaining\n  4. Teste as rotas /api/v1 normalmente",
+      "_type": "workspace"
+    },
+
+    {
+      "_id": "env_local",
+      "parentId": "wrk_oad",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Local Dev",
+      "data": {
+        "base_url": "http://localhost:8080",
+        "jwks_stub_url": "http://localhost:9090",
+        "bearer_token": "",
+        "type_id": "<UUID do entity type criado>",
+        "system_id": "<UUID do system criado>",
+        "schema_id": "<UUID do overlay schema criado>"
+      },
+      "dataPropertyOrder": {
+        "&": ["base_url", "jwks_stub_url", "bearer_token", "type_id", "system_id", "schema_id"]
+      },
+      "color": "#4CAF50",
+      "isPrivate": false,
+      "metaSortKey": 1744545600000,
+      "_type": "environment"
+    },
+
+    {
+      "_id": "fld_dev_tokens",
+      "parentId": "wrk_oad",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "🔑 Dev Tokens (JWKS Stub)",
+      "description": "Geração de JWTs de teste via o stub JWKS local (jwks-stub rodando na porta 9090).\n\nPré-requisito: make dev (ou docker compose up jwks-stub)\n\nApós executar qualquer requisição aqui, o bearer_token do ambiente fica\npreenchido automaticamente via response chaining — não é necessário copiar\nnada manualmente.\n\nCustomize SUB / ROLES / SYSTEM_ID conforme a necessidade do cenário.",
+      "metaSortKey": 1744545599000,
+      "_type": "request_group"
+    },
+
+    {
+      "_id": "req_token_admin",
+      "parentId": "fld_dev_tokens",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Mint Token — admin",
+      "description": "Gera um JWT com role 'admin'. Este é o token padrão para testar todas as rotas /api/v1.\n\nO campo 'token' da resposta é usado automaticamente como bearer_token no ambiente via response chaining.\n\nEquivalente a: make dev-token",
+      "method": "POST",
+      "url": "{{ jwks_stub_url }}/token",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"sub\": \"admin@example.com\",\n  \"oad_roles\": [\"admin\", \"editor\"],\n  \"oad_system_id\": \"550e8400-e29b-41d4-a716-446655440000\"\n}"
+      },
+      "authentication": {},
+      "afterResponseScript": "const data = insomnia.response.json();\nif (data && data.token) {\n  insomnia.environment.set('bearer_token', data.token);\n  console.log('[dev-token] bearer_token atualizado com sucesso');\n} else {\n  console.error('[dev-token] campo token não encontrado na resposta', data);\n}",
+      "metaSortKey": 1744545599001,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_token_viewer",
+      "parentId": "fld_dev_tokens",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Mint Token — viewer (sem admin)",
+      "description": "Gera um JWT com role 'viewer' apenas — útil para testar que rotas de escrita retornam 403.\n\nPara usar: execute esta request e copie o valor de 'token' para a variável bearer_token do ambiente manualmente (ou ajuste o response chaining para apontar para req_token_viewer).",
+      "method": "POST",
+      "url": "{{ jwks_stub_url }}/token",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"sub\": \"viewer@example.com\",\n  \"oad_roles\": [\"viewer\"],\n  \"oad_system_id\": \"550e8400-e29b-41d4-a716-446655440000\"\n}"
+      },
+      "authentication": {},
+      "metaSortKey": 1744545599002,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_token_custom",
+      "parentId": "fld_dev_tokens",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Mint Token — customizável",
+      "description": "Template para gerar tokens com claims arbitrários.\n\nParâmetros aceitos pelo stub:\n  sub         — subject (obrigatório)\n  oad_roles   — array de strings com as roles\n  oad_system_id — UUID do sistema\n  expires_in  — duração no formato Go (ex: \"30m\", \"2h\"). Padrão: 1h",
+      "method": "POST",
+      "url": "{{ jwks_stub_url }}/token",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"sub\": \"custom@example.com\",\n  \"oad_roles\": [\"admin\"],\n  \"oad_system_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"expires_in\": \"2h\"\n}"
+      },
+      "authentication": {},
+      "metaSortKey": 1744545599003,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_token_missing_sub",
+      "parentId": "fld_dev_tokens",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Mint Token — 400 (sub ausente)",
+      "description": "Deve retornar 400 Bad Request: campo 'sub' é obrigatório pelo stub.",
+      "method": "POST",
+      "url": "{{ jwks_stub_url }}/token",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"oad_roles\": [\"admin\"]\n}"
+      },
+      "authentication": {},
+      "metaSortKey": 1744545599004,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_jwks_json",
+      "parentId": "fld_dev_tokens",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "GET JWKS (chave pública)",
+      "description": "Retorna o JSON Web Key Set com a chave pública RSA que o stub usa para assinar os tokens.\nEste endpoint é o que a API consome para validar os JWTs (JWKS_URL no config).",
+      "method": "GET",
+      "url": "{{ jwks_stub_url }}/.well-known/jwks.json",
+      "headers": [
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {},
+      "authentication": {},
+      "metaSortKey": 1744545599005,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_jwks_health",
+      "parentId": "fld_dev_tokens",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Health Check (JWKS Stub)",
+      "description": "Liveness probe do servidor JWKS stub. Retorna {\"status\":\"ok\"} quando o serviço está rodando.",
+      "method": "GET",
+      "url": "{{ jwks_stub_url }}/health",
+      "headers": [],
+      "body": {},
+      "authentication": {},
+      "metaSortKey": 1744545599006,
+      "_type": "request"
+    },
+
+    {
+      "_id": "fld_ops",
+      "parentId": "wrk_oad",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Operational",
+      "description": "Endpoints públicos — sem autenticação",
+      "metaSortKey": 1744545600000,
+      "_type": "request_group"
+    },
+
+    {
+      "_id": "fld_entity_types",
+      "parentId": "wrk_oad",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Entity Types",
+      "description": "CRUD entity_type_definition — FR-ETD-001..004\nExige role: admin",
+      "metaSortKey": 1744545601000,
+      "_type": "request_group"
+    },
+
+    {
+      "_id": "fld_systems",
+      "parentId": "wrk_oad",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Systems",
+      "description": "CRUD system — FR-SYS-001..003\nExige role: admin",
+      "metaSortKey": 1744545602000,
+      "_type": "request_group"
+    },
+
+    {
+      "_id": "fld_overlay_schemas",
+      "parentId": "wrk_oad",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Overlay Schemas",
+      "description": "CRUD system_overlay_schema — FR-OVS-001..005\nExige role: admin\nDepende de: system_id e type_id preenchidos no ambiente",
+      "metaSortKey": 1744545603000,
+      "_type": "request_group"
+    },
+
+    {
+      "_id": "req_health",
+      "parentId": "fld_ops",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Health Check",
+      "description": "Verifica disponibilidade da aplicação e conectividade com o banco.",
+      "method": "GET",
+      "url": "{{ base_url }}/health",
+      "headers": [],
+      "body": {},
+      "authentication": {},
+      "metaSortKey": 1744545600000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_etd_list",
+      "parentId": "fld_entity_types",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "List Entity Types",
+      "description": "Retorna todos os entity types cadastrados ordenados por type_name.",
+      "method": "GET",
+      "url": "{{ base_url }}/api/v1/entity-types",
+      "headers": [
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {},
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545600000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_etd_create_user",
+      "parentId": "fld_entity_types",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Create Entity Type — user (global)",
+      "description": "Cria o tipo 'user' com schema de propriedades e relações válidas.\nScope global: entidades desse tipo existem independentemente de sistema.\n\nApós criação: copie o campo 'id' da resposta para a variável type_id do ambiente.",
+      "method": "POST",
+      "url": "{{ base_url }}/api/v1/entity-types",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"type_name\": \"user\",\n  \"allowed_properties\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"department\": { \"type\": \"string\" },\n      \"clearance_level\": { \"type\": \"integer\", \"minimum\": 1, \"maximum\": 5 },\n      \"email\": { \"type\": \"string\", \"format\": \"email\" },\n      \"active\": { \"type\": \"boolean\" }\n    },\n    \"required\": [\"department\"],\n    \"additionalProperties\": false\n  },\n  \"allowed_relations\": {\n    \"member_of\": { \"target_types\": [\"group\", \"role\"] },\n    \"manages\": { \"target_types\": [\"user\"] }\n  },\n  \"scope\": \"global\"\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545601000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_etd_create_role",
+      "parentId": "fld_entity_types",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Create Entity Type — role (global)",
+      "description": "Cria o tipo 'role' para uso em RBAC.",
+      "method": "POST",
+      "url": "{{ base_url }}/api/v1/entity-types",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"type_name\": \"role\",\n  \"allowed_properties\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"description\": { \"type\": \"string\" }\n    },\n    \"additionalProperties\": false\n  },\n  \"allowed_relations\": {\n    \"grants\": { \"target_types\": [\"permission\"] }\n  },\n  \"scope\": \"global\"\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545602000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_etd_create_invalid",
+      "parentId": "fld_entity_types",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Create Entity Type — 400 (invalid schema)",
+      "description": "Deve retornar 400 VALIDATION_FAILED porque allowed_properties não é um JSON Schema válido.",
+      "method": "POST",
+      "url": "{{ base_url }}/api/v1/entity-types",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"type_name\": \"broken_type\",\n  \"allowed_properties\": {\n    \"type\": \"not-a-valid-json-schema-type\"\n  },\n  \"allowed_relations\": {},\n  \"scope\": \"global\"\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545603000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_etd_get",
+      "parentId": "fld_entity_types",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Get Entity Type",
+      "description": "Retorna um entity type pelo UUID.\nPré-requisito: variável type_id preenchida no ambiente.",
+      "method": "GET",
+      "url": "{{ base_url }}/api/v1/entity-types/{{ type_id }}",
+      "headers": [
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {},
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545604000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_etd_update",
+      "parentId": "fld_entity_types",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Update Entity Type",
+      "description": "Substitui allowed_properties e allowed_relations de um entity type existente.\nTypeame e Scope são imutáveis após criação.\nPré-requisito: variável type_id preenchida no ambiente.",
+      "method": "PUT",
+      "url": "{{ base_url }}/api/v1/entity-types/{{ type_id }}",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"allowed_properties\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"department\": { \"type\": \"string\" },\n      \"clearance_level\": { \"type\": \"integer\", \"minimum\": 1, \"maximum\": 5 },\n      \"email\": { \"type\": \"string\", \"format\": \"email\" },\n      \"active\": { \"type\": \"boolean\" },\n      \"cost_center\": { \"type\": \"string\" }\n    },\n    \"required\": [\"department\", \"email\"],\n    \"additionalProperties\": false\n  },\n  \"allowed_relations\": {\n    \"member_of\": { \"target_types\": [\"group\", \"role\"] },\n    \"manages\": { \"target_types\": [\"user\"] },\n    \"reports_to\": { \"target_types\": [\"user\"] }\n  }\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545605000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_etd_delete",
+      "parentId": "fld_entity_types",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Delete Entity Type",
+      "description": "Remove um entity type sem entidades associadas (FR-ETD-003).\nRetorna 400 BAD_REQUEST se existirem entidades do tipo.\nPré-requisito: variável type_id preenchida no ambiente.",
+      "method": "DELETE",
+      "url": "{{ base_url }}/api/v1/entity-types/{{ type_id }}",
+      "headers": [],
+      "body": {},
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545606000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_sys_list",
+      "parentId": "fld_systems",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "List Systems",
+      "description": "Retorna todos os sistemas cadastrados ordenados por nome.",
+      "method": "GET",
+      "url": "{{ base_url }}/api/v1/systems",
+      "headers": [
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {},
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545600000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_sys_create",
+      "parentId": "fld_systems",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Create System",
+      "description": "Registra um novo sistema. O name é usado como prefixo obrigatório nas chaves de overlay (FR-OVS-005).\n\nApós criação: copie o campo 'id' para a variável system_id do ambiente.",
+      "method": "POST",
+      "url": "{{ base_url }}/api/v1/systems",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"name\": \"credit\",\n  \"description\": \"Credit risk management and approval system\"\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545601000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_sys_create_duplicate",
+      "parentId": "fld_systems",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Create System — 409 (duplicate name)",
+      "description": "Deve retornar 409 CONFLICT ao tentar registrar um sistema com o mesmo nome.",
+      "method": "POST",
+      "url": "{{ base_url }}/api/v1/systems",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"name\": \"credit\",\n  \"description\": \"Tentativa duplicada\"\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545602000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_sys_get",
+      "parentId": "fld_systems",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Get System",
+      "description": "Retorna um sistema pelo UUID.\nPré-requisito: variável system_id preenchida no ambiente.",
+      "method": "GET",
+      "url": "{{ base_url }}/api/v1/systems/{{ system_id }}",
+      "headers": [
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {},
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545603000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_sys_patch_meta",
+      "parentId": "fld_systems",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Patch System — atualiza descrição",
+      "description": "Atualiza campos opcionais. Apenas os campos presentes no body são modificados (FR-SYS-002).\nPré-requisito: variável system_id preenchida no ambiente.",
+      "method": "PATCH",
+      "url": "{{ base_url }}/api/v1/systems/{{ system_id }}",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"description\": \"Credit risk management, approval workflows, and scoring\"\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545604000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_sys_deactivate",
+      "parentId": "fld_systems",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Patch System — desativa (active: false)",
+      "description": "Desativa o sistema sem deletar seus dados (FR-SYS-003).\nSistemas inativos têm seus overlays excluídos das respostas de retrieval.\nPré-requisito: variável system_id preenchida no ambiente.",
+      "method": "PATCH",
+      "url": "{{ base_url }}/api/v1/systems/{{ system_id }}",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"active\": false\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545605000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_sys_reactivate",
+      "parentId": "fld_systems",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Patch System — reativa (active: true)",
+      "description": "Reativa um sistema previamente desativado.\nPré-requisito: variável system_id preenchida no ambiente.",
+      "method": "PATCH",
+      "url": "{{ base_url }}/api/v1/systems/{{ system_id }}",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"active\": true\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545606000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_ovs_list",
+      "parentId": "fld_overlay_schemas",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "List Overlay Schemas",
+      "description": "Retorna todos os overlay schemas do sistema.\nPré-requisito: variável system_id preenchida no ambiente.",
+      "method": "GET",
+      "url": "{{ base_url }}/api/v1/systems/{{ system_id }}/overlay-schemas",
+      "headers": [
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {},
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545600000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_ovs_create",
+      "parentId": "fld_overlay_schemas",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Create Overlay Schema",
+      "description": "Cria o schema de overlay para o sistema 'credit' sobre o tipo 'user'.\nTodas as chaves em allowed_overlay_properties DEVEM ter prefixo 'credit.' (FR-OVS-005).\n\nPré-requisito: system_id e type_id preenchidos no ambiente.\nApós criação: copie o 'id' para a variável schema_id do ambiente.",
+      "method": "POST",
+      "url": "{{ base_url }}/api/v1/systems/{{ system_id }}/overlay-schemas",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"entity_type_id\": \"{{ type_id }}\",\n  \"allowed_overlay_properties\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"credit.max_approval\": {\n        \"type\": \"number\",\n        \"minimum\": 0,\n        \"description\": \"Valor máximo de aprovação de crédito em BRL\"\n      },\n      \"credit.risk_score\": {\n        \"type\": \"string\",\n        \"enum\": [\"low\", \"medium\", \"high\", \"critical\"]\n      },\n      \"credit.credit_limit\": {\n        \"type\": \"number\",\n        \"minimum\": 0\n      },\n      \"credit.analyst_id\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\"credit.risk_score\"],\n    \"additionalProperties\": false\n  }\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545601000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_ovs_create_invalid_ns",
+      "parentId": "fld_overlay_schemas",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Create Overlay Schema — 400 (namespace inválido)",
+      "description": "Deve retornar 400 VALIDATION_FAILED: chave 'max_approval' não tem o prefixo 'credit.' obrigatório (FR-OVS-005).\nPré-requisito: system_id e type_id preenchidos no ambiente.",
+      "method": "POST",
+      "url": "{{ base_url }}/api/v1/systems/{{ system_id }}/overlay-schemas",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"entity_type_id\": \"{{ type_id }}\",\n  \"allowed_overlay_properties\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"max_approval\": { \"type\": \"number\" },\n      \"credit.risk_score\": { \"type\": \"string\" }\n    }\n  }\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545602000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_ovs_create_duplicate",
+      "parentId": "fld_overlay_schemas",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Create Overlay Schema — 409 (duplicado)",
+      "description": "Deve retornar 409 CONFLICT: combinação (system_id, entity_type_id) já existe.\nPré-requisito: schema já criado para este par.",
+      "method": "POST",
+      "url": "{{ base_url }}/api/v1/systems/{{ system_id }}/overlay-schemas",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"entity_type_id\": \"{{ type_id }}\",\n  \"allowed_overlay_properties\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"credit.score\": { \"type\": \"number\" }\n    }\n  }\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545603000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_ovs_get",
+      "parentId": "fld_overlay_schemas",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Get Overlay Schema",
+      "description": "Retorna um overlay schema pelo UUID.\nPré-requisito: variáveis system_id e schema_id preenchidas no ambiente.",
+      "method": "GET",
+      "url": "{{ base_url }}/api/v1/systems/{{ system_id }}/overlay-schemas/{{ schema_id }}",
+      "headers": [
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {},
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545604000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_ovs_update",
+      "parentId": "fld_overlay_schemas",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Update Overlay Schema",
+      "description": "Substitui allowed_overlay_properties de um overlay schema existente (FR-OVS-002).\nTodas as chaves continuam exigindo o prefixo do sistema.\nPré-requisito: variáveis system_id e schema_id preenchidas no ambiente.",
+      "method": "PUT",
+      "url": "{{ base_url }}/api/v1/systems/{{ system_id }}/overlay-schemas/{{ schema_id }}",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"allowed_overlay_properties\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"credit.max_approval\": {\n        \"type\": \"number\",\n        \"minimum\": 0\n      },\n      \"credit.risk_score\": {\n        \"type\": \"string\",\n        \"enum\": [\"low\", \"medium\", \"high\", \"critical\"]\n      },\n      \"credit.credit_limit\": {\n        \"type\": \"number\",\n        \"minimum\": 0\n      },\n      \"credit.analyst_id\": {\n        \"type\": \"string\"\n      },\n      \"credit.approved_at\": {\n        \"type\": \"string\",\n        \"format\": \"date-time\"\n      }\n    },\n    \"required\": [\"credit.risk_score\"],\n    \"additionalProperties\": false\n  }\n}"
+      },
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545605000,
+      "_type": "request"
+    },
+
+    {
+      "_id": "req_ovs_delete",
+      "parentId": "fld_overlay_schemas",
+      "modified": 1744545600000,
+      "created": 1744545600000,
+      "name": "Delete Overlay Schema",
+      "description": "Remove um overlay schema sem property overlays associados (FR-OVS-003).\nRetorna 400 se existirem property_overlays que dependem deste schema.\nPré-requisito: variáveis system_id e schema_id preenchidas no ambiente.",
+      "method": "DELETE",
+      "url": "{{ base_url }}/api/v1/systems/{{ system_id }}/overlay-schemas/{{ schema_id }}",
+      "headers": [],
+      "body": {},
+      "authentication": {
+        "type": "bearer",
+        "token": "{{ bearer_token }}",
+        "prefix": "Bearer",
+        "disabled": false
+      },
+      "metaSortKey": 1744545606000,
+      "_type": "request"
+    }
+  ]
+}

@@ -2,7 +2,9 @@
 package response
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -32,4 +34,17 @@ func Error(w http.ResponseWriter, err *apierr.APIError) {
 // NoContent writes a 204 No Content response.
 func NoContent(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// HandleError inspects err for a known *apierr.APIError and writes the
+// appropriate structured response. Unknown errors are logged and mapped to
+// 500 Internal Server Error so internal details never leak to clients.
+func HandleError(ctx context.Context, w http.ResponseWriter, err error) {
+	var apiErr *apierr.APIError
+	if errors.As(err, &apiErr) {
+		Error(w, apiErr)
+		return
+	}
+	slog.ErrorContext(ctx, "unhandled handler error", "error", err)
+	Error(w, apierr.Internal("an unexpected error occurred"))
 }

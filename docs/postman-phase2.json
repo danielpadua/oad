@@ -1,0 +1,811 @@
+{
+  "info": {
+    "_postman_id": "oad-phase2-schema-registry",
+    "name": "OAD — Open Authoritative Directory",
+    "description": "Phase 2 — Schema Registry (Entity Types, Systems, Overlay Schemas)\n\nFluxo rápido para testes locais:\n  1. Suba a stack: make dev\n  2. Importe também o arquivo postman-env-local.json e selecione o ambiente \"OAD Local Dev\"\n  3. Execute \"Mint Token — admin\" na pasta 🔑 Dev Tokens (JWKS Stub)\n  4. O bearer_token é preenchido automaticamente via Tests script\n  5. Teste as rotas /api/v1 normalmente",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "🔑 Dev Tokens (JWKS Stub)",
+      "description": "Geração de JWTs de teste via o stub JWKS local (jwks-stub rodando na porta 9090).\n\nPré-requisito: make dev (ou docker compose up jwks-stub)\n\nApós executar \"Mint Token — admin\", o bearer_token do ambiente é preenchido automaticamente via Tests script — não é necessário copiar nada manualmente.\n\nCustomize SUB / ROLES / SYSTEM_ID conforme a necessidade do cenário.",
+      "item": [
+        {
+          "name": "Mint Token — admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sub\": \"admin@example.com\",\n  \"oad_roles\": [\"admin\", \"editor\"],\n  \"oad_system_id\": \"550e8400-e29b-41d4-a716-446655440000\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{jwks_stub_url}}/token",
+              "host": ["{{jwks_stub_url}}"],
+              "path": ["token"]
+            },
+            "description": "Gera um JWT com role 'admin'. Este é o token padrão para testar todas as rotas /api/v1.\n\nO campo 'token' da resposta é salvo automaticamente na variável bearer_token do ambiente via Tests script.\n\nEquivalente a: make dev-token"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data && data.token) {",
+                  "    pm.environment.set('bearer_token', data.token);",
+                  "    console.log('[dev-token] bearer_token atualizado com sucesso');",
+                  "    pm.test('Token gerado com sucesso', () => pm.response.to.have.status(200));",
+                  "} else {",
+                  "    console.error('[dev-token] campo token não encontrado na resposta', data);",
+                  "    pm.test('Token presente na resposta', () => { throw new Error('campo token ausente'); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mint Token — viewer (sem admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sub\": \"viewer@example.com\",\n  \"oad_roles\": [\"viewer\"],\n  \"oad_system_id\": \"550e8400-e29b-41d4-a716-446655440000\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{jwks_stub_url}}/token",
+              "host": ["{{jwks_stub_url}}"],
+              "path": ["token"]
+            },
+            "description": "Gera um JWT com role 'viewer' apenas — útil para testar que rotas de escrita retornam 403.\n\nCopie o valor de 'token' da resposta para a variável bearer_token do ambiente manualmente, ou adicione um Tests script similar ao de \"Mint Token — admin\"."
+          },
+          "event": []
+        },
+        {
+          "name": "Mint Token — customizável",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sub\": \"custom@example.com\",\n  \"oad_roles\": [\"admin\"],\n  \"oad_system_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"expires_in\": \"2h\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{jwks_stub_url}}/token",
+              "host": ["{{jwks_stub_url}}"],
+              "path": ["token"]
+            },
+            "description": "Template para gerar tokens com claims arbitrários.\n\nParâmetros aceitos pelo stub:\n  sub           — subject (obrigatório)\n  oad_roles     — array de strings com as roles\n  oad_system_id — UUID do sistema\n  expires_in    — duração no formato Go (ex: \"30m\", \"2h\"). Padrão: 1h"
+          },
+          "event": []
+        },
+        {
+          "name": "Mint Token — 400 (sub ausente)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oad_roles\": [\"admin\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{jwks_stub_url}}/token",
+              "host": ["{{jwks_stub_url}}"],
+              "path": ["token"]
+            },
+            "description": "Deve retornar 400 Bad Request: campo 'sub' é obrigatório pelo stub."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Retorna 400 quando sub está ausente', () => {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET JWKS (chave pública)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{jwks_stub_url}}/.well-known/jwks.json",
+              "host": ["{{jwks_stub_url}}"],
+              "path": [".well-known", "jwks.json"]
+            },
+            "description": "Retorna o JSON Web Key Set com a chave pública RSA que o stub usa para assinar os tokens.\nEste endpoint é o que a API consome para validar os JWTs (JWKS_URL no config)."
+          },
+          "event": []
+        },
+        {
+          "name": "Health Check (JWKS Stub)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{jwks_stub_url}}/health",
+              "host": ["{{jwks_stub_url}}"],
+              "path": ["health"]
+            },
+            "description": "Liveness probe do servidor JWKS stub. Retorna {\"status\":\"ok\"} quando o serviço está rodando."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('JWKS stub está saudável', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.status).to.equal('ok');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Operational",
+      "description": "Endpoints públicos — sem autenticação",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Verifica disponibilidade da aplicação e conectividade com o banco."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API está saudável', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Entity Types",
+      "description": "CRUD entity_type_definition — FR-ETD-001..004\nExige role: admin",
+      "item": [
+        {
+          "name": "List Entity Types",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/entity-types",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entity-types"]
+            },
+            "description": "Retorna todos os entity types cadastrados ordenados por type_name."
+          },
+          "event": []
+        },
+        {
+          "name": "Create Entity Type — user (global)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type_name\": \"user\",\n  \"allowed_properties\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"department\": { \"type\": \"string\" },\n      \"clearance_level\": { \"type\": \"integer\", \"minimum\": 1, \"maximum\": 5 },\n      \"email\": { \"type\": \"string\", \"format\": \"email\" },\n      \"active\": { \"type\": \"boolean\" }\n    },\n    \"required\": [\"department\"],\n    \"additionalProperties\": false\n  },\n  \"allowed_relations\": {\n    \"member_of\": { \"target_types\": [\"group\", \"role\"] },\n    \"manages\": { \"target_types\": [\"user\"] }\n  },\n  \"scope\": \"global\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/entity-types",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entity-types"]
+            },
+            "description": "Cria o tipo 'user' com schema de propriedades e relações válidas.\nScope global: entidades desse tipo existem independentemente de sistema.\n\nApós criação: copie o campo 'id' da resposta para a variável type_id do ambiente."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const data = pm.response.json();",
+                  "    if (data && data.id) {",
+                  "        pm.environment.set('type_id', data.id);",
+                  "        console.log('[entity-type] type_id salvo:', data.id);",
+                  "    }",
+                  "}",
+                  "pm.test('Entity type criado com sucesso', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Entity Type — role (global)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type_name\": \"role\",\n  \"allowed_properties\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"description\": { \"type\": \"string\" }\n    },\n    \"additionalProperties\": false\n  },\n  \"allowed_relations\": {\n    \"grants\": { \"target_types\": [\"permission\"] }\n  },\n  \"scope\": \"global\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/entity-types",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entity-types"]
+            },
+            "description": "Cria o tipo 'role' para uso em RBAC."
+          },
+          "event": []
+        },
+        {
+          "name": "Create Entity Type — 400 (invalid schema)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type_name\": \"broken_type\",\n  \"allowed_properties\": {\n    \"type\": \"not-a-valid-json-schema-type\"\n  },\n  \"allowed_relations\": {},\n  \"scope\": \"global\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/entity-types",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entity-types"]
+            },
+            "description": "Deve retornar 400 VALIDATION_FAILED porque allowed_properties não é um JSON Schema válido."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Retorna 400 para schema inválido', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Entity Type",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/entity-types/{{type_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entity-types", "{{type_id}}"]
+            },
+            "description": "Retorna um entity type pelo UUID.\nPré-requisito: variável type_id preenchida no ambiente."
+          },
+          "event": []
+        },
+        {
+          "name": "Update Entity Type",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"allowed_properties\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"department\": { \"type\": \"string\" },\n      \"clearance_level\": { \"type\": \"integer\", \"minimum\": 1, \"maximum\": 5 },\n      \"email\": { \"type\": \"string\", \"format\": \"email\" },\n      \"active\": { \"type\": \"boolean\" },\n      \"cost_center\": { \"type\": \"string\" }\n    },\n    \"required\": [\"department\", \"email\"],\n    \"additionalProperties\": false\n  },\n  \"allowed_relations\": {\n    \"member_of\": { \"target_types\": [\"group\", \"role\"] },\n    \"manages\": { \"target_types\": [\"user\"] },\n    \"reports_to\": { \"target_types\": [\"user\"] }\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/entity-types/{{type_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entity-types", "{{type_id}}"]
+            },
+            "description": "Substitui allowed_properties e allowed_relations de um entity type existente.\nTypename e Scope são imutáveis após criação.\nPré-requisito: variável type_id preenchida no ambiente."
+          },
+          "event": []
+        },
+        {
+          "name": "Delete Entity Type",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/entity-types/{{type_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entity-types", "{{type_id}}"]
+            },
+            "description": "Remove um entity type sem entidades associadas (FR-ETD-003).\nRetorna 400 BAD_REQUEST se existirem entidades do tipo.\nPré-requisito: variável type_id preenchida no ambiente."
+          },
+          "event": []
+        }
+      ]
+    },
+    {
+      "name": "Systems",
+      "description": "CRUD system — FR-SYS-001..003\nExige role: admin",
+      "item": [
+        {
+          "name": "List Systems",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/systems",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "systems"]
+            },
+            "description": "Retorna todos os sistemas cadastrados ordenados por nome."
+          },
+          "event": []
+        },
+        {
+          "name": "Create System",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"credit\",\n  \"description\": \"Credit risk management and approval system\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/systems",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "systems"]
+            },
+            "description": "Registra um novo sistema. O name é usado como prefixo obrigatório nas chaves de overlay (FR-OVS-005).\n\nApós criação: copie o campo 'id' para a variável system_id do ambiente."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const data = pm.response.json();",
+                  "    if (data && data.id) {",
+                  "        pm.environment.set('system_id', data.id);",
+                  "        console.log('[system] system_id salvo:', data.id);",
+                  "    }",
+                  "}",
+                  "pm.test('Sistema criado com sucesso', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create System — 409 (duplicate name)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"credit\",\n  \"description\": \"Tentativa duplicada\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/systems",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "systems"]
+            },
+            "description": "Deve retornar 409 CONFLICT ao tentar registrar um sistema com o mesmo nome."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Retorna 409 para nome duplicado', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get System",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/systems/{{system_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "systems", "{{system_id}}"]
+            },
+            "description": "Retorna um sistema pelo UUID.\nPré-requisito: variável system_id preenchida no ambiente."
+          },
+          "event": []
+        },
+        {
+          "name": "Patch System — atualiza descrição",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Credit risk management, approval workflows, and scoring\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/systems/{{system_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "systems", "{{system_id}}"]
+            },
+            "description": "Atualiza campos opcionais. Apenas os campos presentes no body são modificados (FR-SYS-002).\nPré-requisito: variável system_id preenchida no ambiente."
+          },
+          "event": []
+        },
+        {
+          "name": "Patch System — desativa (active: false)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": false\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/systems/{{system_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "systems", "{{system_id}}"]
+            },
+            "description": "Desativa o sistema sem deletar seus dados (FR-SYS-003).\nSistemas inativos têm seus overlays excluídos das respostas de retrieval.\nPré-requisito: variável system_id preenchida no ambiente."
+          },
+          "event": []
+        },
+        {
+          "name": "Patch System — reativa (active: true)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/systems/{{system_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "systems", "{{system_id}}"]
+            },
+            "description": "Reativa um sistema previamente desativado.\nPré-requisito: variável system_id preenchida no ambiente."
+          },
+          "event": []
+        }
+      ]
+    },
+    {
+      "name": "Overlay Schemas",
+      "description": "CRUD system_overlay_schema — FR-OVS-001..005\nExige role: admin\nDepende de: system_id e type_id preenchidos no ambiente",
+      "item": [
+        {
+          "name": "List Overlay Schemas",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/systems/{{system_id}}/overlay-schemas",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "systems", "{{system_id}}", "overlay-schemas"]
+            },
+            "description": "Retorna todos os overlay schemas do sistema.\nPré-requisito: variável system_id preenchida no ambiente."
+          },
+          "event": []
+        },
+        {
+          "name": "Create Overlay Schema",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entity_type_id\": \"{{type_id}}\",\n  \"allowed_overlay_properties\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"credit.max_approval\": {\n        \"type\": \"number\",\n        \"minimum\": 0,\n        \"description\": \"Valor máximo de aprovação de crédito em BRL\"\n      },\n      \"credit.risk_score\": {\n        \"type\": \"string\",\n        \"enum\": [\"low\", \"medium\", \"high\", \"critical\"]\n      },\n      \"credit.credit_limit\": {\n        \"type\": \"number\",\n        \"minimum\": 0\n      },\n      \"credit.analyst_id\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\"credit.risk_score\"],\n    \"additionalProperties\": false\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/systems/{{system_id}}/overlay-schemas",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "systems", "{{system_id}}", "overlay-schemas"]
+            },
+            "description": "Cria o schema de overlay para o sistema 'credit' sobre o tipo 'user'.\nTodas as chaves em allowed_overlay_properties DEVEM ter prefixo 'credit.' (FR-OVS-005).\n\nPré-requisito: system_id e type_id preenchidos no ambiente.\nApós criação: copie o 'id' para a variável schema_id do ambiente."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const data = pm.response.json();",
+                  "    if (data && data.id) {",
+                  "        pm.environment.set('schema_id', data.id);",
+                  "        console.log('[overlay-schema] schema_id salvo:', data.id);",
+                  "    }",
+                  "}",
+                  "pm.test('Overlay schema criado com sucesso', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Overlay Schema — 400 (namespace inválido)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entity_type_id\": \"{{type_id}}\",\n  \"allowed_overlay_properties\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"max_approval\": { \"type\": \"number\" },\n      \"credit.risk_score\": { \"type\": \"string\" }\n    }\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/systems/{{system_id}}/overlay-schemas",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "systems", "{{system_id}}", "overlay-schemas"]
+            },
+            "description": "Deve retornar 400 VALIDATION_FAILED: chave 'max_approval' não tem o prefixo 'credit.' obrigatório (FR-OVS-005).\nPré-requisito: system_id e type_id preenchidos no ambiente."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Retorna 400 para namespace inválido', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Overlay Schema — 409 (duplicado)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entity_type_id\": \"{{type_id}}\",\n  \"allowed_overlay_properties\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"credit.score\": { \"type\": \"number\" }\n    }\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/systems/{{system_id}}/overlay-schemas",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "systems", "{{system_id}}", "overlay-schemas"]
+            },
+            "description": "Deve retornar 409 CONFLICT: combinação (system_id, entity_type_id) já existe.\nPré-requisito: schema já criado para este par."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Retorna 409 para overlay duplicado', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Overlay Schema",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/systems/{{system_id}}/overlay-schemas/{{schema_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "systems", "{{system_id}}", "overlay-schemas", "{{schema_id}}"]
+            },
+            "description": "Retorna um overlay schema pelo UUID.\nPré-requisito: variáveis system_id e schema_id preenchidas no ambiente."
+          },
+          "event": []
+        },
+        {
+          "name": "Update Overlay Schema",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"allowed_overlay_properties\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"credit.max_approval\": {\n        \"type\": \"number\",\n        \"minimum\": 0\n      },\n      \"credit.risk_score\": {\n        \"type\": \"string\",\n        \"enum\": [\"low\", \"medium\", \"high\", \"critical\"]\n      },\n      \"credit.credit_limit\": {\n        \"type\": \"number\",\n        \"minimum\": 0\n      },\n      \"credit.analyst_id\": {\n        \"type\": \"string\"\n      },\n      \"credit.approved_at\": {\n        \"type\": \"string\",\n        \"format\": \"date-time\"\n      }\n    },\n    \"required\": [\"credit.risk_score\"],\n    \"additionalProperties\": false\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/systems/{{system_id}}/overlay-schemas/{{schema_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "systems", "{{system_id}}", "overlay-schemas", "{{schema_id}}"]
+            },
+            "description": "Substitui allowed_overlay_properties de um overlay schema existente (FR-OVS-002).\nTodas as chaves continuam exigindo o prefixo do sistema.\nPré-requisito: variáveis system_id e schema_id preenchidas no ambiente."
+          },
+          "event": []
+        },
+        {
+          "name": "Delete Overlay Schema",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/systems/{{system_id}}/overlay-schemas/{{schema_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "systems", "{{system_id}}", "overlay-schemas", "{{schema_id}}"]
+            },
+            "description": "Remove um overlay schema sem property overlays associados (FR-OVS-003).\nRetorna 400 se existirem property_overlays que dependem deste schema.\nPré-requisito: variáveis system_id e schema_id preenchidas no ambiente."
+          },
+          "event": []
+        }
+      ]
+    }
+  ]
+}

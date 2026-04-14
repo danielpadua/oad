@@ -11,19 +11,23 @@ import (
 	"time"
 
 	"github.com/danielpadua/oad/internal/api"
+	"github.com/danielpadua/oad/internal/api/handler"
 	"github.com/danielpadua/oad/internal/api/middleware"
+	"github.com/danielpadua/oad/internal/audit"
 	"github.com/danielpadua/oad/internal/auth"
 	"github.com/danielpadua/oad/internal/config"
 	"github.com/danielpadua/oad/internal/db"
+	"github.com/danielpadua/oad/internal/entitytype"
 	"github.com/danielpadua/oad/internal/logging"
+	"github.com/danielpadua/oad/internal/overlayschema"
+	"github.com/danielpadua/oad/internal/system"
 	"github.com/danielpadua/oad/migrations"
 )
 
 func main() {
 	// Initialize structured JSON logger with context-aware enrichment.
-	// The ContextHandler automatically injects correlation_id (and later
-	// actor/system_id) into every log record from the request context,
-	// so callers only need slog.*Context — no manual attribute passing.
+	// The ContextHandler automatically injects correlation_id and actor identity
+	// into every log record from the request context.
 	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})
@@ -79,12 +83,28 @@ func run() error {
 		mtlsAuth = auth.NewMTLSAuthenticator(cfg.Auth.MTLSHeader)
 	}
 
+	// --- Phase 2: Schema Registry ---
+	auditSvc := audit.NewService()
+
+	entityTypeRepo := entitytype.NewRepository()
+	entityTypeSvc := entitytype.NewService(pool, entityTypeRepo, auditSvc)
+
+	systemRepo := system.NewRepository()
+	systemSvc := system.NewService(pool, systemRepo, auditSvc)
+
+	overlaySchemaRepo := overlayschema.NewRepository()
+	overlaySchemaSvc := overlayschema.NewService(pool, overlaySchemaRepo, auditSvc)
+
 	router := api.NewRouter(api.Dependencies{
 		DB:       pool,
 		Config:   cfg,
 		Logger:   slog.Default(),
 		JWTAuth:  jwtAuth,
 		MTLSAuth: mtlsAuth,
+
+		EntityTypeHandler:    handler.NewEntityTypeHandler(entityTypeSvc),
+		SystemHandler:        handler.NewSystemHandler(systemSvc),
+		OverlaySchemaHandler: handler.NewOverlaySchemaHandler(overlaySchemaSvc),
 	})
 
 	srv := &http.Server{
