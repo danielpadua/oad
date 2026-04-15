@@ -40,6 +40,9 @@ type Dependencies struct {
 
 	// Phase 4 handlers — Overlay System
 	OverlayHandler *handler.OverlayHandler
+
+	// Phase 5 handlers — Retrieval API
+	RetrievalHandler *handler.RetrievalHandler
 }
 
 // NewRouter constructs the Chi router with all middleware and routes registered.
@@ -110,15 +113,23 @@ func NewRouter(deps Dependencies) http.Handler {
 			})
 		})
 
+		// ── Phase 5 — Retrieval API (top-level) ──────────────────────────
+		// These endpoints are open to all authenticated callers (PDPs, control planes).
+		r.Get("/changelog", deps.RetrievalHandler.Changelog)
+		r.Get("/export", deps.RetrievalHandler.Export)
+
 		// ── Phase 3 — Entity & Relation Management ────────────────────────
 
 		// Entities: typed nodes in the authorization graph.
-		// Literal sub-paths (/lookup, /bulk) are registered before /{entity_id}
+		// Literal sub-paths (/lookup, /search, /bulk) are registered before /{entity_id}
 		// so chi's radix tree resolves them as literals, not path parameters.
 		r.Route("/entities", func(r chi.Router) {
-			// Exact lookup by type + external_id (no role restriction — any
-			// authenticated caller may look up entities, e.g., a PDP).
-			r.Get("/lookup", deps.EntityHandler.Lookup)
+			// Phase 5 lookup: type + external_id with optional system_id for merged view.
+			// Supersedes the Phase 3 simple lookup with full retrieval logging (FR-RET-001).
+			r.Get("/lookup", deps.RetrievalHandler.Lookup)
+
+			// Phase 5 property filter: JSONB containment queries via GIN index (FR-RET-002).
+			r.Get("/search", deps.RetrievalHandler.Filter)
 
 			// Write operations require at least editor role.
 			r.With(middleware.RequireAnyRole("admin", "editor")).Post("/bulk", deps.EntityHandler.BulkCreate)

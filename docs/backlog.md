@@ -47,12 +47,12 @@
 
 ### Phase 5 — Retrieval API
 
-26. [ ] Entity lookup with merged view — FR-RET-001, FR-OVL-006, FR-OVL-007 (global properties + namespaced overlay merge, global + system-scoped relations, AuthZen-compatible response)
-27. [ ] Relation query with filters and pagination — FR-REL-005, FR-RET-005
-28. [ ] Property filter query — FR-RET-002 (GIN-indexed JSONB containment queries)
-29. [ ] Changelog endpoint — FR-RET-003 (audit_log query by timestamp + system, paginated)
-30. [ ] Bulk export — FR-RET-004 (paginated, deterministic order)
-31. [ ] Retrieval logging — FR-AUD-002 (caller identity, query parameters, returned references)
+26. [x] Entity lookup with merged view — FR-RET-001, FR-OVL-006, FR-OVL-007 (global properties + namespaced overlay merge, global + system-scoped relations, AuthZen-compatible response)
+27. [x] Relation query with filters and pagination — FR-REL-005, FR-RET-005
+28. [x] Property filter query — FR-RET-002 (GIN-indexed JSONB containment queries)
+29. [x] Changelog endpoint — FR-RET-003 (audit_log query by timestamp + system, paginated)
+30. [x] Bulk export — FR-RET-004 (paginated, deterministic order)
+31. [x] Retrieval logging — FR-AUD-002 (caller identity, query parameters, returned references)
 
 ### Phase 6 — Webhooks
 

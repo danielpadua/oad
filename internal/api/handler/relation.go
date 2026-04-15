@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -20,12 +21,14 @@ type relationService interface {
 
 // RelationHandler handles HTTP requests for relation endpoints.
 type RelationHandler struct {
-	svc relationService
+	svc    relationService
+	retLog retrievalLogger // optional; when non-nil, retrieval events are logged (FR-AUD-002)
 }
 
 // NewRelationHandler creates a new relation handler.
-func NewRelationHandler(svc relationService) *RelationHandler {
-	return &RelationHandler{svc: svc}
+// retLog may be nil; when nil, retrieval logging for relation queries is skipped.
+func NewRelationHandler(svc relationService, retLog retrievalLogger) *RelationHandler {
+	return &RelationHandler{svc: svc, retLog: retLog}
 }
 
 // Create handles POST /api/v1/relations (FR-REL-001)
@@ -73,16 +76,35 @@ func (h *RelationHandler) ListByEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.svc.ListByEntity(r.Context(), entityID, relation.ListParams{
+	params := relation.ListParams{
 		RelationType: r.URL.Query().Get("relation_type"),
 		SystemID:     systemID,
 		Limit:        limit,
 		Offset:       offset,
-	})
+	}
+	result, err := h.svc.ListByEntity(r.Context(), entityID, params)
 	if err != nil {
 		response.HandleError(r.Context(), w, err)
 		return
 	}
+
+	// Log the retrieval event (FR-AUD-002).
+	if h.retLog != nil {
+		ids := make([]string, len(result.Items))
+		for i, rel := range result.Items {
+			ids[i] = rel.ID.String()
+		}
+		queryParams, _ := json.Marshal(map[string]any{
+			"entity_id":     entityID,
+			"relation_type": params.RelationType,
+			"system_id":     params.SystemID,
+			"limit":         params.Limit,
+			"offset":        params.Offset,
+		})
+		returnedRefs, _ := json.Marshal(ids)
+		h.retLog.LogRetrieval(r.Context(), queryParams, returnedRefs)
+	}
+
 	response.JSON(w, http.StatusOK, result)
 }
 
