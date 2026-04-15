@@ -27,5 +27,6 @@
     "go.mod": "go.sum",
     "docker-compose.yml": "docker-compose.*.yml, Dockerfile, Dockerfile.*",
     ".golangci.yml": ".editorconfig, .gitignore, .gitattributes"
-  }
+  },
+  "makefile.configureOnOpen": false
 }

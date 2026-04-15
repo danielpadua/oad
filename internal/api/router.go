@@ -37,6 +37,9 @@ type Dependencies struct {
 	// Phase 3 handlers — Entity & Relation Management
 	EntityHandler   *handler.EntityHandler
 	RelationHandler *handler.RelationHandler
+
+	// Phase 4 handlers — Overlay System
+	OverlayHandler *handler.OverlayHandler
 }
 
 // NewRouter constructs the Chi router with all middleware and routes registered.
@@ -131,6 +134,20 @@ func NewRouter(deps Dependencies) http.Handler {
 
 				// Relations of this entity (FR-REL-005).
 				r.Get("/relations", deps.RelationHandler.ListByEntity)
+
+				// ── Phase 4 — Overlay System ──────────────────────────────────
+				// Property overlays are scoped to the caller's system (FR-OVL-008).
+				// Reads are open to all authenticated roles; writes require editor+.
+				r.Route("/overlays", func(r chi.Router) {
+					r.Get("/", deps.OverlayHandler.List)
+					r.With(middleware.RequireAnyRole("admin", "editor")).Post("/", deps.OverlayHandler.Create)
+
+					r.Route("/{overlay_id}", func(r chi.Router) {
+						r.Get("/", deps.OverlayHandler.GetByID)
+						r.With(middleware.RequireAnyRole("admin", "editor")).Put("/", deps.OverlayHandler.Update)
+						r.With(middleware.RequireAnyRole("admin", "editor")).Delete("/", deps.OverlayHandler.Delete)
+					})
+				})
 			})
 		})
 

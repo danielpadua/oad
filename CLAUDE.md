@@ -184,6 +184,32 @@ The initial migration (`000001_initial_schema.up.sql`) creates:
 - **`webhook_subscription`** / **`webhook_delivery`** — event notification infrastructure.
 - **Row-Level Security** on `entity`, `relation`, `property_overlay`, `webhook_subscription` using `app.current_system_id` session variable.
 
+# Commit conventions
+
+All commits must follow the **Conventional Commits** specification (`type(scope): description`).
+
+| Type | When to use |
+|---|---|
+| `feat` | New feature or endpoint |
+| `fix` | Bug fix |
+| `docs` | Documentation only |
+| `refactor` | Code change that neither fixes a bug nor adds a feature |
+| `test` | Adding or updating tests |
+| `chore` | Build, CI, tooling, config |
+| `style` | Formatting, lint fixes |
+
+**Scope** (optional) narrows the context: `feat(overlay)`, `fix(lint)`, `chore(ci)`, `docs(claude)`.
+
+**Subject line rules**: lowercase, imperative mood, no trailing period, max 72 characters.
+
+Examples from this repo:
+```
+feat: implement phase 4 overlay system (property_overlay CRUD)
+fix(lint): replace naked return with explicit return values in parsePagination
+chore(hooks): track pre-commit hook and expose make setup for new clones
+docs(claude): document conventional commits convention
+```
+
 # Coding conventions
 
 - **Error handling**: always wrap errors with `fmt.Errorf("context: %w", err)`. Use `apierr` types for HTTP responses.

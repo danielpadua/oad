@@ -43,7 +43,7 @@
 
 ### Phase 4 — Overlay System
 
-25. [ ] CRUD `property_overlay` — FR-OVL-001..004, FR-OVL-008 (overlay schema lookup, namespace enforcement, JSON Schema validation, system-scope authorization)
+25. [x] CRUD `property_overlay` — FR-OVL-001..004, FR-OVL-008 (overlay schema lookup, namespace enforcement, JSON Schema validation, system-scope authorization)
 
 ### Phase 5 — Retrieval API
 

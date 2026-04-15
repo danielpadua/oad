@@ -67,6 +67,15 @@ func Forbidden(message string) *APIError {
 	}
 }
 
+func UnprocessableEntity(message string, details ...string) *APIError {
+	return &APIError{
+		HTTPStatus: http.StatusUnprocessableEntity,
+		Code:       "UNPROCESSABLE_ENTITY",
+		Message:    message,
+		Details:    details,
+	}
+}
+
 func Internal(message string) *APIError {
 	return &APIError{
 		HTTPStatus: http.StatusInternalServerError,

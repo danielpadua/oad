@@ -20,6 +20,7 @@ import (
 	"github.com/danielpadua/oad/internal/entity"
 	"github.com/danielpadua/oad/internal/entitytype"
 	"github.com/danielpadua/oad/internal/logging"
+	"github.com/danielpadua/oad/internal/overlay"
 	"github.com/danielpadua/oad/internal/overlayschema"
 	"github.com/danielpadua/oad/internal/relation"
 	"github.com/danielpadua/oad/internal/system"
@@ -104,6 +105,10 @@ func run() error {
 	relationRepo := relation.NewRepository()
 	relationSvc := relation.NewService(pool, relationRepo, auditSvc)
 
+	// --- Phase 4: Overlay System ---
+	overlayRepo := overlay.NewRepository()
+	overlaySvc := overlay.NewService(pool, overlayRepo, auditSvc)
+
 	router := api.NewRouter(api.Dependencies{
 		DB:       pool,
 		Config:   cfg,
@@ -117,6 +122,8 @@ func run() error {
 
 		EntityHandler:   handler.NewEntityHandler(entitySvc),
 		RelationHandler: handler.NewRelationHandler(relationSvc),
+
+		OverlayHandler: handler.NewOverlayHandler(overlaySvc),
 	})
 
 	srv := &http.Server{
