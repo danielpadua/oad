@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -319,8 +320,19 @@ func (r *pgxRepository) WriteLog(ctx context.Context, q db.DBTX, entry LogEntry)
 	return nil
 }
 
-// mergeJSON merges overlay on top of base using the same semantics as PostgreSQL's
-// || JSONB operator (overlay keys win on conflict). Returns base unchanged on any error.
+// mergeJSON merges overlay properties on top of base, expanding dot-notation keys
+// into nested objects so that a PDP receives structured data.
+//
+// Overlay keys follow the "{systemName}.{subkey}" namespace convention (FR-OVL-004).
+// Each namespace prefix becomes a nested JSON object in the merged result:
+//
+//	base:    {"email":"alice@example.com","clearance_level":3}
+//	overlay: {"credit.analyst_id":"a-001","credit.credit_limit":50000}
+//	result:  {"email":"alice@example.com","clearance_level":3,"credit":{"analyst_id":"a-001","credit_limit":50000}}
+//
+// Keys without a dot are merged directly (overlay wins on conflict, matching || semantics).
+// If the base already holds an object under the namespace key, the overlay sub-keys are
+// merged into it. Returns base unchanged on any marshalling error.
 func mergeJSON(base, overlay json.RawMessage) json.RawMessage {
 	if len(overlay) == 0 {
 		return base
@@ -336,10 +348,46 @@ func mergeJSON(base, overlay json.RawMessage) json.RawMessage {
 	if err := json.Unmarshal(overlay, &overlayMap); err != nil {
 		return base
 	}
-	maps.Copy(baseMap, overlayMap)
-	merged, err := json.Marshal(baseMap)
+
+	// Group overlay entries by namespace prefix (part before the first dot).
+	// Keys without a dot are applied directly to the base (flat merge).
+	nested := make(map[string]map[string]json.RawMessage)
+	for k, v := range overlayMap {
+		if idx := strings.Index(k, "."); idx > 0 {
+			ns := k[:idx]
+			subkey := k[idx+1:]
+			if nested[ns] == nil {
+				nested[ns] = make(map[string]json.RawMessage)
+			}
+			nested[ns][subkey] = v
+		} else {
+			baseMap[k] = v
+		}
+	}
+
+	// Merge each namespace group into the base map.
+	// When the base already holds an object for the namespace, merge into it
+	// (overlay sub-keys win on conflict). Otherwise create a fresh nested object.
+	for ns, subMap := range nested {
+		if existing, ok := baseMap[ns]; ok {
+			var existingObj map[string]json.RawMessage
+			if err := json.Unmarshal(existing, &existingObj); err == nil {
+				maps.Copy(existingObj, subMap)
+				if encoded, err := json.Marshal(existingObj); err == nil {
+					baseMap[ns] = encoded
+					continue
+				}
+			}
+		}
+		// No existing object under this namespace — create it.
+		if encoded, err := json.Marshal(subMap); err == nil {
+			baseMap[ns] = encoded
+		}
+	}
+
+	result, err := json.Marshal(baseMap)
 	if err != nil {
 		return base
 	}
-	return merged
+	return result
 }

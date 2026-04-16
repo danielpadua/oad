@@ -1,0 +1,1029 @@
+{
+  "info": {
+    "_postman_id": "oad-phase5-retrieval-api",
+    "name": "OAD — Phase 5: Retrieval API",
+    "description": "Phase 2 (Schema Registry) + Phase 3 (Entity & Relation Management) + Phase 4 (Overlay System) + Phase 5 (Retrieval API)\n\nEsta collection cobre os novos endpoints da Fase 5:\n  • GET /api/v1/entities/lookup   — visão base e visão mesclada (FR-RET-001, FR-OVL-006/007)\n  • GET /api/v1/entities/search   — filtro por propriedades JSONB (FR-RET-002)\n  • GET /api/v1/changelog         — eventos de mudança paginados (FR-RET-003)\n  • GET /api/v1/export            — exportação em lote determinística (FR-RET-004)\n  • GET /api/v1/entities/{id}/relations — com retrieval logging (FR-AUD-002)\n\nPré-requisitos:\n  1. make dev (API + PostgreSQL + JWKS stub rodando)\n  2. Executar a collection Phase 4 na íntegra para criar os dados de teste\n     (Entity Types, Systems, Overlay Schemas, Entities, Relations, Property Overlays)\n  3. Importar postman-env-local.json e selecionar o ambiente 'OAD Local Dev'\n  4. Executar 'Mint Token — platform admin' para popular bearer_token antes de iniciar\n\nVariáveis de ambiente usadas:\n  base_url, jwks_stub_url, bearer_token,\n  entity_id (alice), system_id (credit), role_entity_id, relation_id",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "🔑 Dev Tokens (JWKS Stub)",
+      "description": "Geração de JWTs de teste via o stub JWKS local (jwks-stub rodando na porta 9090).\n\nPré-requisito: make dev (ou docker compose up jwks-stub)\n\nCenários desta fase requerem tokens com perfis distintos:\n  • platform admin (sem system_id) — operações globais e changelog completo\n  • admin com system_id — token para testes de visão mesclada e 403 cross-system\n  • PDP scoped — simula um PDP que só vê dados do sistema 'credit'",
+      "item": [
+        {
+          "name": "Mint Token — platform admin (sem system_id)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sub\": \"platform-admin@example.com\",\n  \"oad_roles\": [\"admin\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{jwks_stub_url}}/token",
+              "host": ["{{jwks_stub_url}}"],
+              "path": ["token"]
+            },
+            "description": "Token sem oad_system_id — platform admin irrestrito.\nNecessário para: Changelog completo, Export global, Lookup sem sistema."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data && data.token) {",
+                  "    pm.environment.set('bearer_token', data.token);",
+                  "    console.log('[dev-token] bearer_token (platform admin) atualizado');",
+                  "    pm.test('Token gerado com sucesso', () => pm.response.to.have.status(200));",
+                  "} else {",
+                  "    pm.test('Token presente na resposta', () => { throw new Error('campo token ausente'); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mint Token — admin (com system_id fixo)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sub\": \"admin@example.com\",\n  \"oad_roles\": [\"admin\", \"editor\"],\n  \"oad_system_id\": \"550e8400-e29b-41d4-a716-446655440000\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{jwks_stub_url}}/token",
+              "host": ["{{jwks_stub_url}}"],
+              "path": ["token"]
+            },
+            "description": "Token com oad_system_id fixo (550e8400-...).\nUsado no cenário 403: o system_id do token difere do {{system_id}} criado dinamicamente na Phase 4."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data && data.token) {",
+                  "    pm.environment.set('bearer_token', data.token);",
+                  "    console.log('[dev-token] bearer_token (admin com system_id fixo) atualizado');",
+                  "    pm.test('Token gerado com sucesso', () => pm.response.to.have.status(200));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mint Token — PDP scoped (system_id do ambiente)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sub\": \"pdp-credit@example.com\",\n  \"oad_roles\": [\"viewer\"],\n  \"oad_system_id\": \"{{system_id}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{jwks_stub_url}}/token",
+              "host": ["{{jwks_stub_url}}"],
+              "path": ["token"]
+            },
+            "description": "Simula um PDP do sistema 'credit' com system_id = {{system_id}}.\nEste token deve ser usado para testar a visão mesclada (merged view) onde o PDP recebe properties globais + overlay do seu próprio sistema."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data && data.token) {",
+                  "    pm.environment.set('bearer_token', data.token);",
+                  "    console.log('[dev-token] bearer_token (PDP scoped) atualizado');",
+                  "    pm.test('Token gerado com sucesso', () => pm.response.to.have.status(200));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🔎 Retrieval API — Entity Lookup (FR-RET-001)",
+      "description": "Lookup de entidade por type + external_id, com visão base ou mesclada.\n\nVisão base (sem system_id):\n  • Retorna properties globais da entidade\n  • Relations: apenas relações globais (system_id IS NULL)\n\nVisão mesclada (com system_id):\n  • Properties: globais || overlay do sistema (FR-OVL-006)\n  • Relations: globais + scoped do sistema (FR-OVL-007)\n  • Retrieval log gravado (FR-AUD-002)\n\nPré-requisito: executar 'Mint Token — platform admin' antes dos testes de visão base;\nexecutar 'Mint Token — PDP scoped' antes dos testes de visão mesclada.",
+      "item": [
+        {
+          "name": "Lookup — alice (visão base, sem system_id) ✅",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/entities/lookup?type=user&external_id=alice@example.com",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entities", "lookup"],
+              "query": [
+                { "key": "type", "value": "user" },
+                { "key": "external_id", "value": "alice@example.com" }
+              ]
+            },
+            "description": "Retorna a entidade alice sem sistema — properties globais apenas.\nRelations incluídas: somente relações com system_id IS NULL.\nEsta rota substituiu o /lookup da Phase 3 e agora grava no retrieval_log (FR-AUD-002)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.test('Campo id presente', () => pm.expect(data).to.have.property('id'));",
+                  "    pm.test('type = user', () => pm.expect(data.type).to.equal('user'));",
+                  "    pm.test('external_id = alice@example.com', () => pm.expect(data.external_id).to.equal('alice@example.com'));",
+                  "    pm.test('properties contém department', () => pm.expect(data.properties).to.have.property('department'));",
+                  "    pm.test('relations é um array', () => pm.expect(data.relations).to.be.an('array'));",
+                  "    pm.test('NÃO contém chave de overlay (sem system_id)', () => {",
+                  "        const keys = Object.keys(data.properties);",
+                  "        const hasOverlay = keys.some(k => k.startsWith('credit.'));",
+                  "        pm.expect(hasOverlay).to.be.false;",
+                  "    });",
+                  "    pm.environment.set('entity_id', data.id);",
+                  "    console.log('[lookup] entity_id (alice) confirmado:', data.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup — alice (visão mesclada, com system_id) ✅",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/entities/lookup?type=user&external_id=alice@example.com&system_id={{system_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entities", "lookup"],
+              "query": [
+                { "key": "type", "value": "user" },
+                { "key": "external_id", "value": "alice@example.com" },
+                { "key": "system_id", "value": "{{system_id}}" }
+              ]
+            },
+            "description": "Visão mesclada: properties globais + overlay do sistema 'credit' fundidos via JSONB ||.\nRelations: globais (system_id IS NULL) + scoped do sistema credit.\nToken deve ser do PDP scoped (oad_system_id = {{system_id}}) ou platform admin.\n\nEspera-se que a resposta contenha tanto 'department' (global) quanto 'credit.risk_score' (overlay)."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Execute 'Mint Token — PDP scoped' antes deste request",
+                  "// para garantir que o token tem oad_system_id = {{system_id}}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.test('type = user', () => pm.expect(data.type).to.equal('user'));",
+                  "    pm.test('properties contém chave global (department)', () =>",
+                  "        pm.expect(data.properties).to.have.property('department'));",
+                  "    pm.test('properties contém chave de overlay (credit.risk_score)', () =>",
+                  "        pm.expect(data.properties).to.have.property('credit.risk_score'));",
+                  "    pm.test('properties contém credit.credit_limit', () =>",
+                  "        pm.expect(data.properties).to.have.property('credit.credit_limit'));",
+                  "    pm.test('relations é um array', () => pm.expect(data.relations).to.be.an('array'));",
+                  "    pm.test('relations têm campos obrigatórios', () => {",
+                  "        if (data.relations.length > 0) {",
+                  "            const rel = data.relations[0];",
+                  "            pm.expect(rel).to.have.property('id');",
+                  "            pm.expect(rel).to.have.property('relation_type');",
+                  "            pm.expect(rel).to.have.property('target_entity_id');",
+                  "        }",
+                  "    });",
+                  "    console.log('[lookup-merged] properties keys:', Object.keys(data.properties));",
+                  "    console.log('[lookup-merged] relations count:', data.relations.length);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup — 404 (external_id inexistente)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/entities/lookup?type=user&external_id=nonexistent@example.com",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entities", "lookup"],
+              "query": [
+                { "key": "type", "value": "user" },
+                { "key": "external_id", "value": "nonexistent@example.com" }
+              ]
+            },
+            "description": "Entidade não encontrada — external_id não existe para o tipo 'user'."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));",
+                  "const data = pm.response.json();",
+                  "pm.test('code = NOT_FOUND', () => pm.expect(data.code).to.equal('NOT_FOUND'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup — 400 (parâmetros ausentes)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/entities/lookup?type=user",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entities", "lookup"],
+              "query": [
+                { "key": "type", "value": "user" }
+              ]
+            },
+            "description": "external_id ausente — deve retornar 400 BAD_REQUEST."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "const data = pm.response.json();",
+                  "pm.test('code = BAD_REQUEST', () => pm.expect(data.code).to.equal('BAD_REQUEST'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup — 403 (cross-system bloqueado)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/entities/lookup?type=user&external_id=alice@example.com&system_id={{system_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entities", "lookup"],
+              "query": [
+                { "key": "type", "value": "user" },
+                { "key": "external_id", "value": "alice@example.com" },
+                { "key": "system_id", "value": "{{system_id}}" }
+              ]
+            },
+            "description": "Demonstra o bloqueio cross-system (NFR-SEC-004).\n\nPré-requisito: executar 'Mint Token — admin (com system_id fixo)' antes deste request.\nO token tem oad_system_id = 550e8400-... que difere do {{system_id}} criado dinamicamente.\nO serviço deve rejeitar com 403 FORBIDDEN."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// IMPORTANTE: execute 'Mint Token — admin (com system_id fixo)' antes deste request.",
+                  "// O token precisa ter oad_system_id DIFERENTE de {{system_id}}."
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 403 (cross-system bloqueado)', () => pm.response.to.have.status(403));",
+                  "const data = pm.response.json();",
+                  "pm.test('code = FORBIDDEN', () => pm.expect(data.code).to.equal('FORBIDDEN'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🔍 Retrieval API — Property Filter (FR-RET-002)",
+      "description": "Consulta entidades cujas properties satisfazem um filtro de contenção JSONB.\nAproveita o índice GIN em entity.properties (@> operator — NFR-PRF-001).\n\nEndpoint: GET /api/v1/entities/search?filter=<json-object>\n\nO parâmetro filter deve ser um objeto JSON válido. Ex: {\"department\":\"engineering\"}\nResultados são paginados com os campos items, total, limit, offset.",
+      "item": [
+        {
+          "name": "Filter — department=engineering ✅",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/entities/search?filter={\"department\":\"engineering\"}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entities", "search"],
+              "query": [
+                { "key": "filter", "value": "{\"department\":\"engineering\"}" }
+              ]
+            },
+            "description": "Retorna todas as entidades cujo campo 'department' = 'engineering'.\nAlice foi criada com essa propriedade na Phase 3/4."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.test('items é um array', () => pm.expect(data.items).to.be.an('array'));",
+                  "    pm.test('total >= 1 (alice deve estar presente)', () => pm.expect(data.total).to.be.at.least(1));",
+                  "    pm.test('Estrutura de paginação presente', () => {",
+                  "        pm.expect(data).to.have.property('limit');",
+                  "        pm.expect(data).to.have.property('offset');",
+                  "    });",
+                  "    pm.test('Cada item tem relations', () => {",
+                  "        data.items.forEach(item => pm.expect(item.relations).to.be.an('array'));",
+                  "    });",
+                  "    const alice = data.items.find(e => e.external_id === 'alice@example.com');",
+                  "    pm.test('alice está nos resultados', () => pm.expect(alice).to.not.be.undefined);",
+                  "    if (alice) {",
+                  "        pm.test('alice.properties.department = engineering', () =>",
+                  "            pm.expect(alice.properties.department).to.equal('engineering'));",
+                  "    }",
+                  "    console.log('[filter] total encontrados:', data.total);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filter — active=true, type=user ✅",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/entities/search?filter={\"active\":true}&type=user&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entities", "search"],
+              "query": [
+                { "key": "filter", "value": "{\"active\":true}" },
+                { "key": "type", "value": "user" },
+                { "key": "limit", "value": "10" }
+              ]
+            },
+            "description": "Filtro combinado: active=true restringido ao type=user.\nDemonstra o pré-filtro por tipo antes da contenção JSONB."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.test('items é um array', () => pm.expect(data.items).to.be.an('array'));",
+                  "    pm.test('Todos os resultados são do tipo user', () => {",
+                  "        data.items.forEach(item => pm.expect(item.type).to.equal('user'));",
+                  "    });",
+                  "    pm.test('Todos têm active=true', () => {",
+                  "        data.items.forEach(item => pm.expect(item.properties.active).to.be.true);",
+                  "    });",
+                  "    console.log('[filter] users ativos:', data.total);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filter — sem resultados (propriedade inexistente)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/entities/search?filter={\"nonexistent_field\":\"xyz\"}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entities", "search"],
+              "query": [
+                { "key": "filter", "value": "{\"nonexistent_field\":\"xyz\"}" }
+              ]
+            },
+            "description": "Filtro que não casa com nenhuma entidade — deve retornar 200 com items vazio e total=0."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test('items vazio', () => pm.expect(data.items).to.be.an('array').that.is.empty);",
+                  "pm.test('total = 0', () => pm.expect(data.total).to.equal(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filter — 400 (filter ausente)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/entities/search",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entities", "search"]
+            },
+            "description": "Parâmetro 'filter' obrigatório ausente — deve retornar 400 BAD_REQUEST."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "const data = pm.response.json();",
+                  "pm.test('code = BAD_REQUEST', () => pm.expect(data.code).to.equal('BAD_REQUEST'));",
+                  "pm.test('message menciona filter', () => pm.expect(data.message.toLowerCase()).to.include('filter'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filter — 400 (filter não é objeto JSON)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/entities/search?filter=engineering",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entities", "search"],
+              "query": [
+                { "key": "filter", "value": "engineering" }
+              ]
+            },
+            "description": "filter não é um objeto JSON válido — deve retornar 400.\nO handler valida que o filter seja um objeto JSON antes de enviar ao banco."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "const data = pm.response.json();",
+                  "pm.test('code = BAD_REQUEST', () => pm.expect(data.code).to.equal('BAD_REQUEST'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "📋 Retrieval API — Changelog (FR-RET-003)",
+      "description": "Retorna entradas do audit_log ordenadas por timestamp ASC desde um instante dado.\nUsado por PDPs e control planes para sincronização incremental de atributos.\n\nEndpoint: GET /api/v1/changelog?since=<RFC3339>\n\nParâmetros:\n  since      (obrigatório) — timestamp RFC3339. Ex: 2000-01-01T00:00:00Z\n  system_id  (opcional)    — filtra eventos do sistema + eventos globais\n  limit      (opcional)    — padrão 25, máximo 100\n  offset     (opcional)    — padrão 0\n\nO retrieval_log é gravado após cada chamada (FR-AUD-002).",
+      "item": [
+        {
+          "name": "Changelog — todos os eventos desde epoch ✅",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/changelog?since=2000-01-01T00:00:00Z&limit=25",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "changelog"],
+              "query": [
+                { "key": "since", "value": "2000-01-01T00:00:00Z" },
+                { "key": "limit", "value": "25" }
+              ]
+            },
+            "description": "Platform admin vê todos os eventos de auditoria.\nsince=2000-01-01 captura todos os dados criados nas phases anteriores.\nOrdenado por timestamp ASC (mais antigo primeiro)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.test('items é um array', () => pm.expect(data.items).to.be.an('array'));",
+                  "    pm.test('total >= 1 (deve ter dados das phases anteriores)', () =>",
+                  "        pm.expect(data.total).to.be.at.least(1));",
+                  "    pm.test('Estrutura de paginação presente', () => {",
+                  "        pm.expect(data).to.have.property('limit');",
+                  "        pm.expect(data).to.have.property('offset');",
+                  "    });",
+                  "    if (data.items.length > 0) {",
+                  "        const first = data.items[0];",
+                  "        pm.test('Entrada tem campo id', () => pm.expect(first).to.have.property('id'));",
+                  "        pm.test('Entrada tem actor', () => pm.expect(first).to.have.property('actor'));",
+                  "        pm.test('Entrada tem operation', () => pm.expect(first).to.have.property('operation'));",
+                  "        pm.test('Entrada tem resource_type', () => pm.expect(first).to.have.property('resource_type'));",
+                  "        pm.test('Entrada tem resource_id', () => pm.expect(first).to.have.property('resource_id'));",
+                  "        pm.test('Entrada tem timestamp', () => pm.expect(first).to.have.property('timestamp'));",
+                  "    }",
+                  "    console.log('[changelog] total de eventos:', data.total);",
+                  "    // Salva timestamp atual para uso no próximo teste",
+                  "    pm.environment.set('since_timestamp', new Date().toISOString());",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Changelog — filtrado por system_id ✅",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/changelog?since=2000-01-01T00:00:00Z&system_id={{system_id}}&limit=25",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "changelog"],
+              "query": [
+                { "key": "since", "value": "2000-01-01T00:00:00Z" },
+                { "key": "system_id", "value": "{{system_id}}" },
+                { "key": "limit", "value": "25" }
+              ]
+            },
+            "description": "Retorna apenas eventos do sistema 'credit' (system_id={{system_id}}) + eventos globais (system_id IS NULL).\nPermite que PDPs sincronizem apenas as mudanças relevantes ao seu domínio."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.test('items é um array', () => pm.expect(data.items).to.be.an('array'));",
+                  "    pm.test('Todos os eventos são do sistema ou globais', () => {",
+                  "        const sysId = pm.environment.get('system_id');",
+                  "        data.items.forEach(item => {",
+                  "            const ok = item.system_id === null || item.system_id === sysId;",
+                  "            pm.expect(ok, `event ${item.id} tem system_id=${item.system_id}`).to.be.true;",
+                  "        });",
+                  "    });",
+                  "    console.log('[changelog-scoped] eventos do sistema:', data.total);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Changelog — paginação (limit=2, offset=0) ✅",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/changelog?since=2000-01-01T00:00:00Z&limit=2&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "changelog"],
+              "query": [
+                { "key": "since", "value": "2000-01-01T00:00:00Z" },
+                { "key": "limit", "value": "2" },
+                { "key": "offset", "value": "0" }
+              ]
+            },
+            "description": "Valida paginação: retorna exatamente 2 items mesmo que total > 2."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.test('items tem no máximo 2 elementos', () =>",
+                  "        pm.expect(data.items.length).to.be.at.most(2));",
+                  "    pm.test('limit = 2', () => pm.expect(data.limit).to.equal(2));",
+                  "    pm.test('offset = 0', () => pm.expect(data.offset).to.equal(0));",
+                  "    console.log('[changelog-page] items na página:', data.items.length, '/ total:', data.total);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Changelog — eventos recentes (since dinâmico) ✅",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/changelog?since={{since_timestamp}}&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "changelog"],
+              "query": [
+                { "key": "since", "value": "{{since_timestamp}}" },
+                { "key": "limit", "value": "10" }
+              ]
+            },
+            "description": "Usa o {{since_timestamp}} salvo pelo teste anterior (timestamp do momento em que o primeiro changelog foi executado).\nDeve retornar somente os eventos criados APÓS aquele instante — idealmente nenhum, pois nenhuma mutação foi feita desde então.\n\nIlustra o padrão de sincronização incremental: salve o timestamp da última query e use-o como 'since' na próxima."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.test('items é um array', () => pm.expect(data.items).to.be.an('array'));",
+                  "    console.log('[changelog-incremental] novos eventos desde last sync:', data.total);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Changelog — 400 (since ausente)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/changelog",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "changelog"]
+            },
+            "description": "Parâmetro 'since' obrigatório ausente — deve retornar 400 BAD_REQUEST."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "const data = pm.response.json();",
+                  "pm.test('code = BAD_REQUEST', () => pm.expect(data.code).to.equal('BAD_REQUEST'));",
+                  "pm.test('message menciona since', () => pm.expect(data.message.toLowerCase()).to.include('since'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Changelog — 400 (since formato inválido)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/changelog?since=ontem",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "changelog"],
+              "query": [
+                { "key": "since", "value": "ontem" }
+              ]
+            },
+            "description": "since em formato inválido (não é RFC3339) — deve retornar 400."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "const data = pm.response.json();",
+                  "pm.test('code = BAD_REQUEST', () => pm.expect(data.code).to.equal('BAD_REQUEST'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "📦 Retrieval API — Bulk Export (FR-RET-004)",
+      "description": "Exportação em lote de todas as entidades com suas relações para cold start ou DR.\nOrdem determinística: ORDER BY created_at ASC, id ASC.\n\nEndpoint: GET /api/v1/export\n\nParâmetros:\n  type    (opcional) — filtra por tipo de entidade\n  limit   (opcional) — padrão 25, máximo 500\n  offset  (opcional) — padrão 0\n\nCada item retorna: id, type, external_id, properties, relations[], system_id, timestamps.\nRelações incluídas: globais sempre; scoped do sistema se o caller tiver system_id no token.\nO retrieval_log é gravado após cada chamada (FR-AUD-002).",
+      "item": [
+        {
+          "name": "Export — todos os tipos ✅",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/export?limit=50",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "export"],
+              "query": [
+                { "key": "limit", "value": "50" }
+              ]
+            },
+            "description": "Platform admin exporta todas as entidades (sem filtro de tipo).\nCada item contém o campo 'relations' com as relações do sujeito (batch-loaded).\nOrdem: created_at ASC, id ASC — determinística para paginação."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.test('items é um array', () => pm.expect(data.items).to.be.an('array'));",
+                  "    pm.test('total >= 1', () => pm.expect(data.total).to.be.at.least(1));",
+                  "    pm.test('Estrutura de paginação presente', () => {",
+                  "        pm.expect(data).to.have.property('limit');",
+                  "        pm.expect(data).to.have.property('offset');",
+                  "    });",
+                  "    pm.test('Cada item tem relations array', () => {",
+                  "        data.items.forEach(item => {",
+                  "            pm.expect(item).to.have.property('relations');",
+                  "            pm.expect(item.relations).to.be.an('array');",
+                  "        });",
+                  "    });",
+                  "    pm.test('Cada item tem campos obrigatórios', () => {",
+                  "        data.items.forEach(item => {",
+                  "            pm.expect(item).to.have.property('id');",
+                  "            pm.expect(item).to.have.property('type');",
+                  "            pm.expect(item).to.have.property('external_id');",
+                  "            pm.expect(item).to.have.property('properties');",
+                  "            pm.expect(item).to.have.property('created_at');",
+                  "        });",
+                  "    });",
+                  "    console.log('[export] total de entidades:', data.total, '| página:', data.items.length);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Export — filtrado por type=user ✅",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/export?type=user&limit=50",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "export"],
+              "query": [
+                { "key": "type", "value": "user" },
+                { "key": "limit", "value": "50" }
+              ]
+            },
+            "description": "Exporta apenas entidades do tipo 'user'.\nÚtil para PDPs que só precisam de sujeitos de um determinado tipo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.test('items é um array', () => pm.expect(data.items).to.be.an('array'));",
+                  "    pm.test('Todos os items são do type=user', () => {",
+                  "        data.items.forEach(item => pm.expect(item.type).to.equal('user'));",
+                  "    });",
+                  "    pm.test('alice está no export', () => {",
+                  "        const alice = data.items.find(e => e.external_id === 'alice@example.com');",
+                  "        pm.expect(alice).to.not.be.undefined;",
+                  "    });",
+                  "    console.log('[export-user] total users:', data.total);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Export — paginação (limit=2, offset=0) ✅",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/export?limit=2&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "export"],
+              "query": [
+                { "key": "limit", "value": "2" },
+                { "key": "offset", "value": "0" }
+              ]
+            },
+            "description": "Valida paginação do export: retorna exatamente 2 itens com total refletindo o dataset completo.\nPara iterar todo o dataset: use limit fixo e incremente offset a cada chamada até total == itens acumulados."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.test('items tem no máximo 2 elementos', () =>",
+                  "        pm.expect(data.items.length).to.be.at.most(2));",
+                  "    pm.test('limit = 2', () => pm.expect(data.limit).to.equal(2));",
+                  "    pm.test('offset = 0', () => pm.expect(data.offset).to.equal(0));",
+                  "    pm.test('total >= items.length', () =>",
+                  "        pm.expect(data.total).to.be.at.least(data.items.length));",
+                  "    console.log('[export-page] items:', data.items.length, '/ total:', data.total);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Export — segunda página (limit=2, offset=2) ✅",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/export?limit=2&offset=2",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "export"],
+              "query": [
+                { "key": "limit", "value": "2" },
+                { "key": "offset", "value": "2" }
+              ]
+            },
+            "description": "Valida que offset=2 avança corretamente para a segunda página.\nO total deve ser o mesmo da primeira página (count não muda)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.test('items é um array', () => pm.expect(data.items).to.be.an('array'));",
+                  "    pm.test('offset = 2', () => pm.expect(data.offset).to.equal(2));",
+                  "    console.log('[export-page2] items:', data.items.length, '/ total:', data.total);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🔗 Relations com Retrieval Logging (FR-AUD-002)",
+      "description": "A rota GET /api/v1/entities/{entity_id}/relations já existia na Phase 3 (FR-REL-005).\nNa Phase 5, o handler passou a gravar no retrieval_log após cada listagem bem-sucedida.\n\nVerifica também paginação e filtros por relation_type e system_id.",
+      "item": [
+        {
+          "name": "List Relations de alice — com logging ✅",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/entities/{{entity_id}}/relations",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entities", "{{entity_id}}", "relations"]
+            },
+            "description": "Lista todas as relações de alice (subject_entity_id = {{entity_id}}).\nApós resposta bem-sucedida, um registro é gravado no retrieval_log (FR-AUD-002) com:\n  caller_identity, query_parameters, returned_refs (IDs das relações), system_id."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.test('items é um array', () => pm.expect(data.items).to.be.an('array'));",
+                  "    pm.test('Estrutura de paginação', () => {",
+                  "        pm.expect(data).to.have.property('total');",
+                  "        pm.expect(data).to.have.property('limit');",
+                  "        pm.expect(data).to.have.property('offset');",
+                  "    });",
+                  "    if (data.items.length > 0) {",
+                  "        const rel = data.items[0];",
+                  "        pm.test('Relação tem id', () => pm.expect(rel).to.have.property('id'));",
+                  "        pm.test('Relação tem relation_type', () => pm.expect(rel).to.have.property('relation_type'));",
+                  "        pm.test('Relação tem target_entity_id', () => pm.expect(rel).to.have.property('target_entity_id'));",
+                  "        pm.environment.set('relation_id', rel.id);",
+                  "    }",
+                  "    console.log('[relations] total de relações de alice:', data.total);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Relations — filtrado por relation_type ✅",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/entities/{{entity_id}}/relations?relation_type=member_of",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entities", "{{entity_id}}", "relations"],
+              "query": [
+                { "key": "relation_type", "value": "member_of" }
+              ]
+            },
+            "description": "Filtra relações pelo tipo 'member_of'. Alice foi relacionada como member_of admin-role e engineers na Phase 3."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.test('Todos os items são member_of', () => {",
+                  "        data.items.forEach(rel =>",
+                  "            pm.expect(rel.relation_type).to.equal('member_of'));",
+                  "    });",
+                  "    console.log('[relations-filtered] member_of count:', data.total);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Relations — paginação (limit=1) ✅",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/entities/{{entity_id}}/relations?limit=1&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "entities", "{{entity_id}}", "relations"],
+              "query": [
+                { "key": "limit", "value": "1" },
+                { "key": "offset", "value": "0" }
+              ]
+            },
+            "description": "Valida paginação das relações: retorna apenas 1 item com total refletindo o count real."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.test('items tem no máximo 1 elemento', () =>",
+                  "        pm.expect(data.items.length).to.be.at.most(1));",
+                  "    pm.test('limit = 1', () => pm.expect(data.limit).to.equal(1));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
