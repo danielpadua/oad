@@ -43,6 +43,9 @@ type Dependencies struct {
 
 	// Phase 5 handlers — Retrieval API
 	RetrievalHandler *handler.RetrievalHandler
+
+	// Phase 6 handlers — Webhooks
+	WebhookHandler *handler.WebhookHandler
 }
 
 // NewRouter constructs the Chi router with all middleware and routes registered.
@@ -109,6 +112,22 @@ func NewRouter(deps Dependencies) http.Handler {
 					r.Get("/{schema_id}", deps.OverlaySchemaHandler.GetByID)
 					r.Put("/{schema_id}", deps.OverlaySchemaHandler.Update)
 					r.Delete("/{schema_id}", deps.OverlaySchemaHandler.Delete)
+				})
+
+				// ── Phase 6 — Webhook Subscriptions ──────────────────────────
+				// Admin role is enforced by the parent /systems route group.
+				// RequireSystemScope further restricts system-scoped callers to
+				// their own system only (platform admins bypass this check).
+				r.Route("/webhooks", func(r chi.Router) {
+					r.Use(middleware.RequireSystemScope("system_id"))
+					r.Get("/", deps.WebhookHandler.List)
+					r.Post("/", deps.WebhookHandler.Create)
+
+					r.Route("/{webhook_id}", func(r chi.Router) {
+						r.Get("/", deps.WebhookHandler.GetByID)
+						r.Patch("/", deps.WebhookHandler.Update)
+						r.Delete("/", deps.WebhookHandler.Delete)
+					})
 				})
 			})
 		})

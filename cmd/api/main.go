@@ -25,6 +25,7 @@ import (
 	"github.com/danielpadua/oad/internal/relation"
 	"github.com/danielpadua/oad/internal/retrieval"
 	"github.com/danielpadua/oad/internal/system"
+	"github.com/danielpadua/oad/internal/webhook"
 	"github.com/danielpadua/oad/migrations"
 )
 
@@ -114,6 +115,11 @@ func run() error {
 	retrievalRepo := retrieval.NewRepository()
 	retrievalSvc := retrieval.NewService(pool, retrievalRepo)
 
+	// --- Phase 6: Webhooks ---
+	webhookRepo := webhook.NewRepository()
+	webhookSvc := webhook.NewService(pool, webhookRepo, auditSvc)
+	webhookDispatcher := webhook.NewDispatcher(pool, webhookRepo, slog.Default())
+
 	router := api.NewRouter(api.Dependencies{
 		DB:       pool,
 		Config:   cfg,
@@ -131,7 +137,15 @@ func run() error {
 		OverlayHandler: handler.NewOverlayHandler(overlaySvc),
 
 		RetrievalHandler: handler.NewRetrievalHandler(retrievalSvc),
+
+		WebhookHandler: handler.NewWebhookHandler(webhookSvc),
 	})
+
+	// Start the webhook dispatcher as a background goroutine.
+	// It shares the server's lifecycle: cancellation propagates via ctx.
+	dispatchCtx, cancelDispatch := context.WithCancel(ctx)
+	defer cancelDispatch()
+	go webhookDispatcher.Run(dispatchCtx)
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
