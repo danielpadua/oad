@@ -8,3 +8,6 @@ export { SoftAurora } from "./SoftAurora";
 export { DecryptedText } from "./DecryptedText";
 export { BorderGlow } from "./BorderGlow";
 export { ShinyText } from "./ShinyText";
+export { BlurText } from "./BlurText";
+export { ClickSpark } from "./ClickSpark";
+export { AnimatedList } from "./AnimatedList";
