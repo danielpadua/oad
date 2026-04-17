@@ -1,0 +1,6 @@
+run:
+  skip-dirs:
+    - web
+issues:
+  exclude-dirs:
+    - web
