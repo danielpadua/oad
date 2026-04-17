@@ -10,6 +10,7 @@ const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Login = lazy(() => import("@/pages/Login"));
 const Callback = lazy(() => import("@/pages/Callback"));
 const SilentRenew = lazy(() => import("@/pages/SilentRenew"));
+const Forbidden = lazy(() => import("@/pages/Forbidden"));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,14 @@ export const router = createBrowserRouter([
     element: (
       <Suspense fallback={null}>
         <SilentRenew />
+      </Suspense>
+    ),
+  },
+  {
+    path: "/403",
+    element: (
+      <Suspense fallback={null}>
+        <Forbidden />
       </Suspense>
     ),
   },

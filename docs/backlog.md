@@ -83,11 +83,11 @@
 
 #### Phase 7.3 — Authorization & Scope UX
 
-47. [ ] Role-based component gates (`<RequireRole>`, `<RequireAnyRole>`)
-48. [ ] System scope selector with `BorderGlow` active indicator for platform admins; fixed scope for product team users
-49. [ ] Hide/disable write actions for viewer role; hide delete for editor role
-50. [ ] Global banner indicating active system scope with `ShinyText` emphasis on system name
-51. [ ] 403 fallback page with actionable guidance
+47. [x] Role-based component gates (`<RequireRole>`, `<RequireAnyRole>`)
+48. [x] System scope selector with `BorderGlow` active indicator for platform admins; fixed scope for product team users
+49. [x] Hide/disable write actions for viewer role; hide delete for editor role
+50. [x] Global banner indicating active system scope with `ShinyText` emphasis on system name
+51. [x] 403 fallback page with actionable guidance
 
 #### Phase 7.4 — Design System & Feedback Primitives
 

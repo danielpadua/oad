@@ -6,3 +6,5 @@ export { SpotlightCard } from "./SpotlightCard";
 export { Dock } from "./Dock";
 export { SoftAurora } from "./SoftAurora";
 export { DecryptedText } from "./DecryptedText";
+export { BorderGlow } from "./BorderGlow";
+export { ShinyText } from "./ShinyText";
