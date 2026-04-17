@@ -1,6 +1,5 @@
 version: "2"
 
-run:
 
 linters:
   enable:
@@ -56,20 +55,3 @@ formatters:
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-  exclude-rules:
-    - path: '^(web|node_modules)/'
-      linters:
-        - errcheck
-        - govet
-        - staticcheck
-        - unused
-        - ineffassign
-        - gosec
-        - gocyclo
-        - misspell
-        - unparam
-        - gocritic
-        - exhaustive
-        - noctx
-        - bodyclose
-        - sqlclosecheck

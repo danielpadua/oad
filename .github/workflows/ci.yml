@@ -36,6 +36,7 @@ jobs:
       - uses: golangci/golangci-lint-action@v9
         with:
           version: latest
+          args: ./cmd/... ./internal/...
 
   # ---------------------------------------------------------------------------
   # Test: unit + integration tests with a real PostgreSQL instance
