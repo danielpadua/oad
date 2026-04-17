@@ -91,13 +91,13 @@
 
 #### Phase 7.4 — Design System & Feedback Primitives
 
-52. [ ] Component library: Button, Input, Select, Textarea, Checkbox, Badge, Tag
-53. [ ] DataTable with column config, server-side pagination, sort, and row actions
-54. [ ] Modal, Drawer, and ConfirmDialog (for destructive actions)
-55. [ ] Form stack: `react-hook-form` + `zod` resolver with field-level error display
-56. [ ] Toast/notification system mapped to `apierr` codes; `ClickSpark` on successful create/save actions
-57. [ ] Empty state, loading skeletons (`BlurText` for text placeholders), and error boundary components
-58. [ ] JSON Schema editor/viewer component (syntax-highlighted, live validation)
+52. [x] Component library: Button, Input, Select, Textarea, Checkbox, Badge, Tag
+53. [x] DataTable with column config, server-side pagination, sort, and row actions
+54. [x] Modal, Drawer, and ConfirmDialog (for destructive actions)
+55. [x] Form stack: `react-hook-form` + `zod` resolver with field-level error display
+56. [x] Toast/notification system mapped to `apierr` codes; `ClickSpark` on successful create/save actions
+57. [x] Empty state, loading skeletons (`BlurText` for text placeholders), and error boundary components
+58. [x] JSON Schema editor/viewer component (syntax-highlighted, live validation)
 
 #### Phase 7.5 — Platform Admin: Schema Registry
 
