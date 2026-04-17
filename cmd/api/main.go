@@ -77,7 +77,7 @@ func run() error {
 	switch cfg.Auth.Mode {
 	case "jwt", "both":
 		var err error
-		jwtAuth, err = auth.NewJWTAuthenticator(ctx, cfg.Auth.JWKSURL, cfg.Auth.JWTAudience, cfg.Auth.JWTIssuer)
+		jwtAuth, err = auth.NewJWTAuthenticator(ctx, cfg.Auth.JWKSURLs, cfg.Auth.JWTAudience, cfg.Auth.JWTIssuers)
 		if err != nil {
 			return fmt.Errorf("initializing JWT authenticator: %w", err)
 		}

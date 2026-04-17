@@ -75,11 +75,11 @@
 
 #### Phase 7.2 — Authentication (OIDC)
 
-42. [ ] `oidc-client-ts` provider with silent and interactive token renewal
-43. [ ] Login page with `SoftAurora` background and `DecryptedText` title; callback and logout routes
-44. [ ] Token storage strategy (in-memory + refresh) and bearer injection on every API call
-45. [ ] `AuthContext` exposing identity, `oad_roles`, `oad_system_id`
-46. [ ] Protected route wrapper and session-expiry handling (auto-redirect on 401)
+42. [x] `oidc-client-ts` provider with silent and interactive token renewal
+43. [x] Login page with `SoftAurora` background and `DecryptedText` title; callback and logout routes
+44. [x] Token storage strategy (in-memory + refresh) and bearer injection on every API call
+45. [x] `AuthContext` exposing identity, `oad_roles`, `oad_system_id`
+46. [x] Protected route wrapper and session-expiry handling (auto-redirect on 401)
 
 #### Phase 7.3 — Authorization & Scope UX
 

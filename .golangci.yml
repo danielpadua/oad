@@ -1,5 +1,12 @@
 version: "2"
 
+run:
+  skip-dirs:
+    - "^web"
+    - "web/.*"
+    - "node_modules"
+
+
 linters:
   enable:
     - errcheck       # unchecked errors
@@ -54,3 +61,6 @@ formatters:
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
+  exclude-dirs:
+    - web/node_modules
+    - web

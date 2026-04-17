@@ -1,0 +1,123 @@
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import type { User } from "oidc-client-ts";
+import { userManager } from "@/lib/oidc";
+import { setTokenGetter, setUnauthorizedHandler } from "@/lib/http-client";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface AuthIdentity {
+  sub: string;
+  email?: string;
+  name?: string;
+  /** OAD application roles extracted from the `oad_roles` JWT claim. */
+  roles: string[];
+  /** System UUID from `oad_system_id` claim; null means platform admin (unrestricted). */
+  systemId: string | null;
+}
+
+interface AuthContextValue {
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  identity: AuthIdentity | null;
+  login: (returnTo?: string) => Promise<void>;
+  logout: () => Promise<void>;
+}
+
+// ─── Context ──────────────────────────────────────────────────────────────────
+
+const AuthContext = createContext<AuthContextValue | null>(null);
+
+function userToIdentity(user: User): AuthIdentity {
+  const claims = user.profile;
+  return {
+    sub: claims.sub,
+    email: claims.email,
+    name: claims.name,
+    roles: (claims["oad_roles"] as string[] | undefined) ?? [],
+    systemId: (claims["oad_system_id"] as string | undefined) ?? null,
+  };
+}
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Keep the http-client token getter in sync with the current user.
+  useEffect(() => {
+    setTokenGetter(() => user?.access_token ?? null);
+  }, [user]);
+
+  // Redirect to /login on 401 — clears OIDC session before redirecting.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      userManager.removeUser().catch(() => {});
+      window.location.replace("/login");
+    });
+  }, []);
+
+  // Load user from sessionStorage on mount, then subscribe to OIDC events.
+  useEffect(() => {
+    userManager
+      .getUser()
+      .then((u) => setUser(u && !u.expired ? u : null))
+      .catch(() => setUser(null))
+      .finally(() => setIsLoading(false));
+
+    const onUserLoaded = (u: User) => setUser(u);
+    const onUserUnloaded = () => setUser(null);
+    const onTokenExpired = () => {
+      setUser(null);
+      window.location.replace("/login");
+    };
+    const onSilentRenewError = () => {
+      setUser(null);
+      window.location.replace("/login");
+    };
+
+    userManager.events.addUserLoaded(onUserLoaded);
+    userManager.events.addUserUnloaded(onUserUnloaded);
+    userManager.events.addAccessTokenExpired(onTokenExpired);
+    userManager.events.addSilentRenewError(onSilentRenewError);
+
+    return () => {
+      userManager.events.removeUserLoaded(onUserLoaded);
+      userManager.events.removeUserUnloaded(onUserUnloaded);
+      userManager.events.removeAccessTokenExpired(onTokenExpired);
+      userManager.events.removeSilentRenewError(onSilentRenewError);
+    };
+  }, []);
+
+  const login = async (returnTo?: string) => {
+    await userManager.signinRedirect({
+      state: returnTo ? { returnTo } : undefined,
+    });
+  };
+
+  const logout = async () => {
+    await userManager.signoutRedirect();
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{
+        isAuthenticated: !!user,
+        isLoading,
+        identity: user ? userToIdentity(user) : null,
+        login,
+        logout,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
+export function useAuth(): AuthContextValue {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
+  return ctx;
+}

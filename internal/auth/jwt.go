@@ -10,37 +10,54 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
+type Provider struct {
+	JWKSURL string
+	Issuer  string
+}
+
 // JWTAuthenticator validates JWT Bearer tokens using a remote JWKS endpoint.
 // It maintains an auto-refreshing key cache so that key rotations at the
 // identity provider are picked up without restarts.
 type JWTAuthenticator struct {
-	cache    *jwk.Cache
-	jwksURL  string
-	audience string
-	issuer   string
+	cache     *jwk.Cache
+	providers []Provider
+	audience  string
 }
 
 // NewJWTAuthenticator creates a JWT authenticator that fetches signing keys
 // from jwksURL. It performs an initial key fetch to fail fast at startup if
 // the OIDC provider is unreachable.
-func NewJWTAuthenticator(ctx context.Context, jwksURL, audience, issuer string) (*JWTAuthenticator, error) {
-	cache := jwk.NewCache(ctx)
-
-	if err := cache.Register(jwksURL, jwk.WithMinRefreshInterval(15*time.Minute)); err != nil {
-		return nil, fmt.Errorf("registering JWKS URL: %w", err)
+func NewJWTAuthenticator(ctx context.Context, jwksURLs []string, audience string, issuers []string) (*JWTAuthenticator, error) {
+	if len(jwksURLs) != len(issuers) {
+		return nil, fmt.Errorf("length of JWKS_URLs (%d) must match length of JWT_ISSUERs (%d)", len(jwksURLs), len(issuers))
 	}
 
-	// Fail fast: if the provider is unreachable at startup, surface the error
-	// immediately rather than silently returning 401 to every request.
-	if _, err := cache.Refresh(ctx, jwksURL); err != nil {
-		return nil, fmt.Errorf("initial JWKS fetch from %s: %w", jwksURL, err)
+	cache := jwk.NewCache(ctx)
+	var providers []Provider
+
+	for i := range jwksURLs {
+		jwksURL := jwksURLs[i]
+		issuer := issuers[i]
+
+		if err := cache.Register(jwksURL, jwk.WithMinRefreshInterval(15*time.Minute)); err != nil {
+			return nil, fmt.Errorf("registering JWKS URL %q: %w", jwksURL, err)
+		}
+
+		// Fail fast if unreachable
+		if _, err := cache.Refresh(ctx, jwksURL); err != nil {
+			return nil, fmt.Errorf("initial JWKS fetch from %s: %w", jwksURL, err)
+		}
+
+		providers = append(providers, Provider{
+			JWKSURL: jwksURL,
+			Issuer:  issuer,
+		})
 	}
 
 	return &JWTAuthenticator{
-		cache:    cache,
-		jwksURL:  jwksURL,
-		audience: audience,
-		issuer:   issuer,
+		cache:     cache,
+		providers: providers,
+		audience:  audience,
 	}, nil
 }
 
@@ -48,21 +65,33 @@ func NewJWTAuthenticator(ctx context.Context, jwksURL, audience, issuer string) 
 // signature against the cached JWKS, checks standard claims (exp, iss, aud),
 // and extracts OAD-specific custom claims (oad_roles, oad_system_id).
 func (a *JWTAuthenticator) Authenticate(ctx context.Context, tokenString string) (*Identity, error) {
-	keySet, err := a.cache.Get(ctx, a.jwksURL)
-	if err != nil {
-		return nil, fmt.Errorf("fetching JWKS: %w", err)
+	var lastErr error
+	var token jwt.Token
+
+	for _, p := range a.providers {
+		keySet, err := a.cache.Get(ctx, p.JWKSURL)
+		if err != nil {
+			lastErr = fmt.Errorf("fetching JWKS for %s: %w", p.JWKSURL, err)
+			continue
+		}
+
+		opts := []jwt.ParseOption{
+			jwt.WithKeySet(keySet),
+			jwt.WithValidate(true),
+			jwt.WithIssuer(p.Issuer),
+			jwt.WithAudience(a.audience),
+		}
+
+		t, err := jwt.Parse([]byte(tokenString), opts...)
+		if err == nil {
+			token = t
+			break
+		}
+		lastErr = err
 	}
 
-	opts := []jwt.ParseOption{
-		jwt.WithKeySet(keySet),
-		jwt.WithValidate(true),
-		jwt.WithIssuer(a.issuer),
-		jwt.WithAudience(a.audience),
-	}
-
-	token, err := jwt.Parse([]byte(tokenString), opts...)
-	if err != nil {
-		return nil, fmt.Errorf("invalid token: %w", err)
+	if token == nil {
+		return nil, fmt.Errorf("invalid token: %w", lastErr)
 	}
 
 	sub := token.Subject()

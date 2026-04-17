@@ -4,3 +4,5 @@ export { FadeContent } from "./FadeContent";
 export { CountUp } from "./CountUp";
 export { SpotlightCard } from "./SpotlightCard";
 export { Dock } from "./Dock";
+export { SoftAurora } from "./SoftAurora";
+export { DecryptedText } from "./DecryptedText";

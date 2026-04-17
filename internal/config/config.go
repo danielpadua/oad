@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -30,11 +31,11 @@ type DatabaseConfig struct {
 // AuthConfig controls how the API authenticates incoming requests.
 // Mode selects which credential types are accepted: "jwt", "mtls", or "both".
 type AuthConfig struct {
-	Mode        string // AUTH_MODE: "jwt" (default), "mtls", or "both"
-	JWKSURL     string // JWKS_URL: required when mode includes jwt
-	JWTAudience string // JWT_AUDIENCE: expected "aud" claim
-	JWTIssuer   string // JWT_ISSUER: expected "iss" claim
-	MTLSHeader  string // MTLS_HEADER: header name for LB-terminated mTLS (default: X-Client-Cert)
+	Mode        string   // AUTH_MODE: "jwt" (default), "mtls", or "both"
+	JWKSURLs    []string // JWKS_URL: required when mode includes jwt (comma-separated)
+	JWTAudience string   // JWT_AUDIENCE: expected "aud" claim
+	JWTIssuers  []string // JWT_ISSUER: expected "iss" claim (comma-separated)
+	MTLSHeader  string   // MTLS_HEADER: header name for LB-terminated mTLS (default: X-Client-Cert)
 }
 
 // Load reads configuration from environment variables.
@@ -49,20 +50,20 @@ func Load() (*Config, error) {
 
 	authCfg := AuthConfig{
 		Mode:        authMode,
-		JWKSURL:     os.Getenv("JWKS_URL"),
+		JWKSURLs:    getEnvStrSlice("JWKS_URL"),
 		JWTAudience: os.Getenv("JWT_AUDIENCE"),
-		JWTIssuer:   os.Getenv("JWT_ISSUER"),
+		JWTIssuers:  getEnvStrSlice("JWT_ISSUER"),
 		MTLSHeader:  getEnvStr("MTLS_HEADER", "X-Client-Cert"),
 	}
 
 	if authMode == "jwt" || authMode == "both" {
-		if authCfg.JWKSURL == "" {
+		if len(authCfg.JWKSURLs) == 0 {
 			return nil, fmt.Errorf("JWKS_URL is required when AUTH_MODE is %q", authMode)
 		}
 		if authCfg.JWTAudience == "" {
 			return nil, fmt.Errorf("JWT_AUDIENCE is required when AUTH_MODE is %q", authMode)
 		}
-		if authCfg.JWTIssuer == "" {
+		if len(authCfg.JWTIssuers) == 0 {
 			return nil, fmt.Errorf("JWT_ISSUER is required when AUTH_MODE is %q", authMode)
 		}
 	}
@@ -114,4 +115,19 @@ func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
 		}
 	}
 	return defaultVal
+}
+
+func getEnvStrSlice(key string) []string {
+	v := os.Getenv(key)
+	if v == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	var result []string
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			result = append(result, t)
+		}
+	}
+	return result
 }

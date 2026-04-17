@@ -61,9 +61,31 @@ test-cover:
 # Code quality
 # ──────────────────────────────────────────────────────────────────────────────
 
+## format: Format Go code with gofumpt
+format:
+	gofumpt -l -w ./cmd/ ./internal/
+
+## format-check: Check if Go code is formatted (used by pre-commit)
+format-check:
+	@if ! command -v gofumpt &>/dev/null; then \
+		echo "WARNING: gofumpt not found, skipping format check."; \
+		echo "  Install with: go install mvdan.cc/gofumpt@latest"; \
+	else \
+		unformatted=$$(gofumpt -l ./cmd/ ./internal/); \
+		if [ -n "$$unformatted" ]; then \
+			echo "FAIL: gofumpt found unformatted files:"; \
+			echo "$$unformatted" | sed 's/^/  /'; \
+			echo "Run 'make format' to fix."; \
+			exit 1; \
+		fi \
+	fi
+
 ## lint: Run golangci-lint (requires golangci-lint to be installed)
 lint:
-	golangci-lint run ./...
+	golangci-lint run ./cmd/... ./internal/...
+
+## pre-commit: Run code quality checks (called by git hook)
+pre-commit: format-check lint
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Setup

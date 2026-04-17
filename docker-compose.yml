@@ -3,6 +3,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.web
+      args:
+        VITE_OIDC_AUTHORITY: "http://localhost:8081/realms/oad"
+        VITE_OIDC_CLIENT_ID: "oad-web"
+        VITE_OIDC_REDIRECT_URI: "http://localhost:5173/callback"
+        VITE_OIDC_POST_LOGOUT_URI: "http://localhost:5173/"
     ports:
       - "5173:80"
     depends_on:
@@ -26,13 +31,15 @@ services:
       SERVER_HOST: "0.0.0.0"
       SERVER_PORT: "8080"
       AUTH_MODE: "jwt"
-      JWKS_URL: "http://jwks-stub:9090/.well-known/jwks.json"
-      JWT_ISSUER: "http://jwks-stub:9090"
+      JWKS_URL: "http://jwks-stub:9090/.well-known/jwks.json,http://keycloak:8080/realms/oad/protocol/openid-connect/certs"
+      JWT_ISSUER: "http://jwks-stub:9090,http://localhost:8081/realms/oad"
       JWT_AUDIENCE: "oad-api"
     depends_on:
       postgres:
         condition: service_healthy
       jwks-stub:
+        condition: service_healthy
+      keycloak:
         condition: service_healthy
     restart: on-failure
 
@@ -52,6 +59,24 @@ services:
       timeout: 2s
       retries: 5
     restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.0
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
+    command:
+      - start-dev
+      - --import-realm
+    healthcheck:
+      test: ["CMD", "bash", "-c", "{ exec 3<>/dev/tcp/127.0.0.1/8080 && echo -e 'GET /realms/oad/.well-known/openid-configuration HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && grep -q '200 OK' <&3; } 2>/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
 
   postgres:
     image: postgres:15-alpine

@@ -34,6 +34,32 @@ type RequestOptions = Omit<RequestInit, "body"> & {
   token?: string;
 };
 
+// ─── Token injection ─────────────────────────────────────────────────────────
+
+// Registered by AuthProvider so every request carries the current access token.
+let tokenGetter: (() => string | null) | null = null;
+
+export function setTokenGetter(fn: () => string | null): void {
+  tokenGetter = fn;
+}
+
+// ─── 401 handler ─────────────────────────────────────────────────────────────
+
+// Registered by AuthProvider to redirect to /login on session expiry.
+let unauthorizedHandler: (() => void) | null = null;
+let handlingUnauthorized = false;
+
+export function setUnauthorizedHandler(fn: () => void): void {
+  unauthorizedHandler = () => {
+    if (!handlingUnauthorized) {
+      handlingUnauthorized = true;
+      fn();
+    }
+  };
+}
+
+// ─── Core fetch wrapper ───────────────────────────────────────────────────────
+
 /**
  * Core fetch wrapper. Callers should use the typed helpers (get, post, put, patch, del)
  * rather than calling this directly.
@@ -42,7 +68,9 @@ type RequestOptions = Omit<RequestInit, "body"> & {
  * - Prepends VITE_API_BASE_URL to relative paths.
  * - Injects a `X-Correlation-ID` header (UUID v4) for distributed tracing.
  * - Serialises the request body to JSON and sets Content-Type.
+ * - Injects the current Bearer token from AuthContext (via tokenGetter).
  * - Throws HttpError for non-2xx responses with the OAD apierr body.
+ * - Triggers the 401 handler on session expiry.
  * - Throws NetworkError for transport-level failures.
  */
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -58,8 +86,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     headers.set("Content-Type", "application/json");
   }
 
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
+  const resolvedToken = token ?? tokenGetter?.() ?? undefined;
+  if (resolvedToken) {
+    headers.set("Authorization", `Bearer ${resolvedToken}`);
   }
 
   let response: Response;
@@ -80,6 +109,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     } catch {
       apiError = { code: "UNKNOWN", message: response.statusText };
     }
+
+    if (response.status === 401) {
+      unauthorizedHandler?.();
+    }
+
     throw new HttpError(response.status, apiError);
   }
 

@@ -81,7 +81,7 @@ func TestJWTAuthenticator_ValidToken(t *testing.T) {
 	srv, kid := testJWKS(t, &privKey.PublicKey)
 
 	ctx := context.Background()
-	authn, err := auth.NewJWTAuthenticator(ctx, srv.URL, "oad-api", "https://idp.example.com")
+	authn, err := auth.NewJWTAuthenticator(ctx, []string{srv.URL}, "oad-api", []string{"https://idp.example.com"})
 	if err != nil {
 		t.Fatalf("creating authenticator: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestJWTAuthenticator_ExpiredToken(t *testing.T) {
 	srv, kid := testJWKS(t, &privKey.PublicKey)
 
 	ctx := context.Background()
-	authn, err := auth.NewJWTAuthenticator(ctx, srv.URL, "oad-api", "https://idp.example.com")
+	authn, err := auth.NewJWTAuthenticator(ctx, []string{srv.URL}, "oad-api", []string{"https://idp.example.com"})
 	if err != nil {
 		t.Fatalf("creating authenticator: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestJWTAuthenticator_WrongAudience(t *testing.T) {
 	srv, kid := testJWKS(t, &privKey.PublicKey)
 
 	ctx := context.Background()
-	authn, err := auth.NewJWTAuthenticator(ctx, srv.URL, "oad-api", "https://idp.example.com")
+	authn, err := auth.NewJWTAuthenticator(ctx, []string{srv.URL}, "oad-api", []string{"https://idp.example.com"})
 	if err != nil {
 		t.Fatalf("creating authenticator: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestJWTAuthenticator_PlatformAdmin_NoSystemID(t *testing.T) {
 	srv, kid := testJWKS(t, &privKey.PublicKey)
 
 	ctx := context.Background()
-	authn, err := auth.NewJWTAuthenticator(ctx, srv.URL, "oad-api", "https://idp.example.com")
+	authn, err := auth.NewJWTAuthenticator(ctx, []string{srv.URL}, "oad-api", []string{"https://idp.example.com"})
 	if err != nil {
 		t.Fatalf("creating authenticator: %v", err)
 	}

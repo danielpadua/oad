@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pre-commit: runs gofumpt and golangci-lint on staged Go files.
+# pre-commit: runs 'make pre-commit' on staged Go files.
 # Blocks the commit if formatting or lint issues are found.
 set -euo pipefail
 
@@ -9,34 +9,9 @@ if [[ -z "$STAGED" ]]; then
   exit 0
 fi
 
-FAILED=0
+echo "[pre-commit] Checking Go code (make pre-commit)..."
 
-# ── gofumpt ───────────────────────────────────────────────────────────────────
-if ! command -v gofumpt &>/dev/null; then
-  echo "[pre-commit] WARNING: gofumpt not found, skipping format check."
-  echo "  Install with: go install mvdan.cc/gofumpt@latest"
-else
-  UNFORMATTED=$(gofumpt -l $STAGED)
-  if [[ -n "$UNFORMATTED" ]]; then
-    echo "[pre-commit] FAIL: gofumpt found unformatted files:"
-    echo "$UNFORMATTED" | sed 's/^/  /'
-    echo "  Run: gofumpt -w $UNFORMATTED"
-    FAILED=1
-  fi
-fi
-
-# ── golangci-lint ─────────────────────────────────────────────────────────────
-if ! command -v golangci-lint &>/dev/null; then
-  echo "[pre-commit] WARNING: golangci-lint not found, skipping lint check."
-  echo "  Install with: https://golangci-lint.run/welcome/install/"
-else
-  if ! golangci-lint run --fix=false ./...; then
-    echo "[pre-commit] FAIL: golangci-lint reported issues."
-    FAILED=1
-  fi
-fi
-
-if [[ "$FAILED" -ne 0 ]]; then
+if ! make pre-commit; then
   echo ""
   echo "[pre-commit] Commit aborted. Fix the issues above and try again."
   exit 1
