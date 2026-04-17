@@ -168,6 +168,7 @@ Relation(daniel --owner--> doc-123)            [system: credit]
 
 **Management Interface**
 - Web UI for administrators to view, create, edit, and delete entities, properties, relations, and system overlays.
+- Built with React 19 + TypeScript (Vite), Tailwind CSS, shadcn/ui for base primitives, and ReactBits (reactbits.dev) for animated/interactive components (page transitions, data counters, scope indicators, loading states).
 - System-level segregation — each product team sees global entities but can only modify their own system overlays and system-scoped relations.
 - Platform administrators can manage global entities and Entity Type Definitions.
 - Role-based access within the UI (admin, editor, viewer).

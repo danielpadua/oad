@@ -35,6 +35,11 @@ go.work.sum
 .env
 .env.*
 !.env.example
+!web/.env.example
+
+# Frontend build output and dependencies
+web/dist/
+web/node_modules/
 
 # OS generated files (macOS / Windows)
 .DS_Store

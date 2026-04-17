@@ -9,7 +9,7 @@ DATABASE_URL   ?= postgresql://oad:oad@localhost:5432/oad?sslmode=disable
 
 .PHONY: build dev dev-db dev-token test test-cover lint setup clean \
         migrate-up migrate-down migrate-status \
-        docker-build
+        docker-build ui-build ui-dev ui-install
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Build
@@ -107,6 +107,22 @@ docker-build:
 ## clean: Remove compiled artifacts and test output
 clean:
 	rm -rf bin/ coverage.out coverage.html
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Management UI (web/)
+# ──────────────────────────────────────────────────────────────────────────────
+
+## ui-install: Install frontend dependencies
+ui-install:
+	cd web && npm ci
+
+## ui-dev: Start the Vite dev server for the Management UI (requires API running)
+ui-dev:
+	cd web && npm run dev
+
+## ui-build: Build the Management UI for production
+ui-build:
+	cd web && npm run build
 
 ## help: Show this help message
 help:

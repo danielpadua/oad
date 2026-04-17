@@ -48,6 +48,7 @@ Design should be model-agnostic, capable of serving RBAC, ABAC, and ReBAC polici
 
 # Technology stack
 
+## Backend
 - **Language**: Go 1.25
 - **HTTP router**: go-chi/chi/v5
 - **Database**: PostgreSQL 15 via jackc/pgx/v5 (connection pool)
@@ -57,6 +58,39 @@ Design should be model-agnostic, capable of serving RBAC, ABAC, and ReBAC polici
 - **Metrics**: prometheus/client_golang
 - **Linting**: golangci-lint v2 config (`.golangci.yml`), gofumpt formatter
 - **CI**: GitHub Actions (lint, test, build, security scans via gosec + trivy)
+
+## Frontend (Management UI)
+- **Framework**: React 19 + TypeScript, Vite bundler
+- **Styling**: Tailwind CSS
+- **UI primitives**: shadcn/ui (accessible, composable base components)
+- **Animated components**: ReactBits (reactbits.dev) — curated animated components for polish and UX feedback
+- **Server state**: TanStack Query (cache, stale-while-revalidate, optimistic updates)
+- **Forms**: react-hook-form + zod resolver
+- **Authentication**: oidc-client-ts (OIDC/OAuth 2.0 code flow with PKCE)
+- **Routing**: React Router v7 (lazy-loaded route modules)
+- **Testing**: Vitest + Testing Library, MSW for API mocking
+- **MCP servers**: shadcn (`shadcn@latest mcp`), reactbits (`reactbits-dev-mcp-server`)
+
+### ReactBits component mapping
+
+Components selected from ReactBits for the OAD Management UI, organized by usage context:
+
+| Context | Component | Usage |
+|---|---|---|
+| Login page | `SoftAurora` (Background) | Animated background for the OIDC login/callback screen |
+| Login page | `DecryptedText` (Text) | Cipher-decode animation on the OAD title — reinforces security branding |
+| Branding | `GradientText` (Text) | OAD logo/title in the top bar |
+| Navigation | `Dock` (Component) | Primary sidebar navigation with hover magnification |
+| Page transitions | `AnimatedContent` (Animation) | Content reveal animation on route changes |
+| Page transitions | `FadeContent` (Animation) | Smooth fade between views |
+| Dashboard | `CountUp` (Text) | Animated counters for key metrics (total entities, active systems, pending webhooks) |
+| Dashboard | `SpotlightCard` (Component) | Highlight cards for system overview and health status |
+| Data lists | `AnimatedList` (Component) | Animated entry for audit log items and entity lists |
+| Multi-step flows | `Stepper` (Component) | Bulk import wizard, entity type definition creation |
+| Active scope | `BorderGlow` (Component) | Visual indicator on the active system scope selector |
+| Action feedback | `ClickSpark` (Animation) | Spark effect on successful create/save actions |
+| Loading states | `BlurText` (Text) | Blur-to-sharp text reveal while data loads |
+| Emphasis | `ShinyText` (Text) | Highlight active system name in scope banner |
 
 # Project structure
 

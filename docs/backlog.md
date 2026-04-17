@@ -56,22 +56,94 @@
 
 ### Phase 6 — Webhooks
 
-32. [ ] CRUD `webhook_subscription` — FR-WHK-001, FR-WHK-003 (callback URL, HMAC secret, activation)
-33. [ ] Webhook dispatcher background worker — FR-WHK-002, FR-WHK-004 (event delivery, HMAC-SHA256 signing, exponential backoff retries, delivery status tracking)
+32. [x] CRUD `webhook_subscription` — FR-WHK-001, FR-WHK-003 (callback URL, HMAC secret, activation)
+33. [x] Webhook dispatcher background worker — FR-WHK-002, FR-WHK-004 (event delivery, HMAC-SHA256 signing, exponential backoff retries, delivery status tracking)
 
 ### Phase 7 — Management UI
 
-34. [ ] React + Vite + Tailwind scaffolding with OIDC authentication flow (oidc-client-ts)
-35. [ ] Entity type definition management views (CRUD)
-36. [ ] System management views (register, update, deactivate)
-37. [ ] Entity and relation management views (CRUD, search, pagination)
-38. [ ] Property overlay management views (system-scoped, namespace display)
-39. [ ] Audit log viewer (search, filter by entity/system/actor/operation/time range)
-40. [ ] Role-based access enforcement (admin, editor, viewer) and system-scope segregation
+#### Phase 7.1 — Foundation & App Shell
+
+34. [x] Vite + React 19 + TypeScript scaffolding, ESLint/Prettier, path aliases
+35. [x] Tailwind CSS setup with design tokens (colors, spacing, typography)
+36. [x] Routing with React Router v7 (lazy-loaded route modules, `AnimatedContent`/`FadeContent` page transitions)
+37. [x] HTTP client: `fetch` wrapper with correlation-ID propagation, error mapping to `apierr` shape
+38. [x] TanStack Query setup (cache, retries, stale-while-revalidate defaults)
+39. [x] Environment config loader (`VITE_API_BASE_URL`, `VITE_OIDC_*`) with runtime validation
+40. [x] App shell layout: top bar with `GradientText` branding, `Dock` sidebar navigation, main content area, breadcrumbs
+
+41. [x] Dashboard home view: `CountUp` metric cards (total entities, active systems, pending webhooks), `SpotlightCard` for system health overview
+
+#### Phase 7.2 — Authentication (OIDC)
+
+42. [ ] `oidc-client-ts` provider with silent and interactive token renewal
+43. [ ] Login page with `SoftAurora` background and `DecryptedText` title; callback and logout routes
+44. [ ] Token storage strategy (in-memory + refresh) and bearer injection on every API call
+45. [ ] `AuthContext` exposing identity, `oad_roles`, `oad_system_id`
+46. [ ] Protected route wrapper and session-expiry handling (auto-redirect on 401)
+
+#### Phase 7.3 — Authorization & Scope UX
+
+47. [ ] Role-based component gates (`<RequireRole>`, `<RequireAnyRole>`)
+48. [ ] System scope selector with `BorderGlow` active indicator for platform admins; fixed scope for product team users
+49. [ ] Hide/disable write actions for viewer role; hide delete for editor role
+50. [ ] Global banner indicating active system scope with `ShinyText` emphasis on system name
+51. [ ] 403 fallback page with actionable guidance
+
+#### Phase 7.4 — Design System & Feedback Primitives
+
+52. [ ] Component library: Button, Input, Select, Textarea, Checkbox, Badge, Tag
+53. [ ] DataTable with column config, server-side pagination, sort, and row actions
+54. [ ] Modal, Drawer, and ConfirmDialog (for destructive actions)
+55. [ ] Form stack: `react-hook-form` + `zod` resolver with field-level error display
+56. [ ] Toast/notification system mapped to `apierr` codes; `ClickSpark` on successful create/save actions
+57. [ ] Empty state, loading skeletons (`BlurText` for text placeholders), and error boundary components
+58. [ ] JSON Schema editor/viewer component (syntax-highlighted, live validation)
+
+#### Phase 7.5 — Platform Admin: Schema Registry
+
+59. [ ] Entity Type Definition list with filter by scope (global/system)
+60. [ ] Entity Type Definition create/edit form via `Stepper` — `allowed_properties` (JSON Schema) and `allowed_relations`
+61. [ ] Entity Type Definition detail view with usage count and delete guard
+62. [ ] System list with `SpotlightCard` overview, register form, edit metadata, deactivate with audit note
+63. [ ] System Overlay Schema list per system with namespace prefix preview and validation
+64. [ ] System Overlay Schema create/edit with live schema validation
+
+#### Phase 7.6 — Entities & Relations (Core CRUD)
+
+65. [ ] Entity list: filter by type, external_id search, JSONB property filter builder, server pagination
+66. [ ] Entity detail with tabs: Properties, Relations, Overlays, Audit
+67. [ ] Entity create/edit — dynamic form generated from type definition `allowed_properties`
+68. [ ] Entity delete with relation-dependency warning
+69. [ ] Relation creation (subject picker, target picker, type restricted to `allowed_relations`)
+70. [ ] Relation list on entity detail with filters and removal
+71. [ ] Bulk import view via `Stepper` wizard: file upload (JSON), validation preview, per-item summary, partial-failure report
+
+#### Phase 7.7 — Product Team: Overlays
+
+72. [ ] Overlay list for current system scope
+73. [ ] Overlay create: entity search, dynamic form from overlay schema, namespaced key display
+74. [ ] Overlay edit and delete within system scope
+75. [ ] Merged-view preview (global + overlay) on entity detail
+
+#### Phase 7.8 — Observability Views
+
+76. [ ] Audit log viewer with `AnimatedList` entries: filters (entity, system, actor, operation, time range), paginated — FR-MGT-005
+77. [ ] Audit detail drawer with before/after diff renderer
+78. [ ] Retrieval log viewer (compliance persona, read-only) — FR-AUD-002
+79. [ ] Webhook subscription CRUD per system (callback URL, HMAC secret generation, activation toggle) — FR-WHK-003
+80. [ ] Webhook delivery history view (recent attempts, retry counter, last status)
+
+#### Phase 7.9 — Polish & UI Testing
+
+81. [ ] i18n scaffolding (pt-BR / en) with lazy-loaded message bundles
+82. [ ] Responsive pass (tablet and mobile breakpoints for read-only views)
+83. [ ] Accessibility audit (axe-core, keyboard navigation, ARIA on tables/modals)
+84. [ ] Unit tests (Vitest + Testing Library) for hooks, forms, and guards
+85. [ ] Contract tests against mocked API (MSW handlers per endpoint)
 
 ### Phase 8 — Hardening & Operability
 
-41. [ ] Load testing with k6: p99 retrieval < 100ms, p99 relations < 200ms, p99 changelog < 500ms
-42. [ ] Security integration tests: cross-system isolation, RLS bypass attempts, unauthorized overlay access
-43. [ ] E2E tests with Playwright: OIDC login, CRUD flows, role enforcement in Management UI
-44. [ ] Production deployment documentation (Dockerfile, environment variables, TLS configuration)
+86. [ ] Load testing with k6: p99 retrieval < 100ms, p99 relations < 200ms, p99 changelog < 500ms
+87. [ ] Security integration tests: cross-system isolation, RLS bypass attempts, unauthorized overlay access
+88. [ ] E2E tests with Playwright: OIDC login, CRUD flows, role enforcement in Management UI
+89. [ ] Production deployment documentation (Dockerfile, environment variables, TLS configuration)
