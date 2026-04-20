@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { LogOut, ChevronDown, Layers } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { GradientText, BorderGlow } from "@/components/reactbits";
@@ -46,7 +47,7 @@ function SystemScopeSelector() {
   const triggerButton = (
     <button
       className={cn(
-        "flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors",
+        "flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors",
         hasScope
           ? "border-transparent bg-primary/10 text-primary"
           : "border-border bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -82,7 +83,7 @@ function SystemScopeSelector() {
               role="option"
               aria-selected={!activeSystemId}
               className={cn(
-                "flex w-full items-center px-3 py-1.5 text-xs transition-colors hover:bg-muted",
+                "flex w-full cursor-pointer items-center px-3 py-1.5 text-xs transition-colors hover:bg-muted",
                 !activeSystemId && "font-medium text-primary"
               )}
               onClick={() => {
@@ -101,7 +102,7 @@ function SystemScopeSelector() {
                 role="option"
                 aria-selected={activeSystemId === s.id}
                 className={cn(
-                  "flex w-full items-center px-3 py-1.5 text-xs transition-colors hover:bg-muted",
+                  "flex w-full cursor-pointer items-center px-3 py-1.5 text-xs transition-colors hover:bg-muted",
                   activeSystemId === s.id && "font-medium text-primary"
                 )}
                 onClick={() => {
@@ -140,7 +141,7 @@ function UserMenu() {
   return (
     <div className="relative">
       <button
-        className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         onClick={() => setOpen((p) => !p)}
         aria-label="User menu"
         aria-haspopup="menu"
@@ -169,7 +170,7 @@ function UserMenu() {
             <div className="border-t border-border" />
             <button
               role="menuitem"
-              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-destructive transition-colors hover:bg-destructive/10"
+              className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-xs text-destructive transition-colors hover:bg-destructive/10"
               onClick={() => {
                 setOpen(false);
                 void logout();
@@ -192,14 +193,16 @@ export function TopBar() {
 
   return (
     <header className="flex h-14 items-center gap-4 border-b border-border bg-card px-6">
-      <GradientText
-        className="text-xl tracking-tight"
-        colors={["#818cf8", "#a78bfa", "#38bdf8", "#818cf8"]}
-        animationSpeed={6}
-      >
-        OAD
-      </GradientText>
-      <span className="text-sm text-muted-foreground">Open Authoritative Directory</span>
+      <Link to="/" className="flex items-center gap-2 no-underline">
+        <GradientText
+          className="text-xl tracking-tight"
+          colors={["#818cf8", "#a78bfa", "#38bdf8", "#818cf8"]}
+          animationSpeed={6}
+        >
+          OAD
+        </GradientText>
+        <span className="text-sm text-muted-foreground">Open Authoritative Directory</span>
+      </Link>
 
       <div className="flex-1" />
 

@@ -71,7 +71,12 @@
   "users": [
     {
       "username": "admin",
+      "email": "admin@oad.local",
+      "firstName": "Admin",
+      "lastName": "User",
       "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
       "credentials": [
         {
           "type": "password",
@@ -87,7 +92,12 @@
     },
     {
       "username": "product",
+      "email": "product@oad.local",
+      "firstName": "Product",
+      "lastName": "Manager",
       "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
       "credentials": [
         {
           "type": "password",
@@ -106,7 +116,12 @@
     },
     {
       "username": "auditor",
+      "email": "auditor@oad.local",
+      "firstName": "Auditor",
+      "lastName": "User",
       "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
       "credentials": [
         {
           "type": "password",
@@ -122,7 +137,12 @@
     },
     {
       "username": "pdp",
+      "email": "pdp@oad.local",
+      "firstName": "PDP",
+      "lastName": "Service",
       "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
       "credentials": [
         {
           "type": "password",

@@ -11,3 +11,5 @@ export { ShinyText } from "./ShinyText";
 export { BlurText } from "./BlurText";
 export { ClickSpark } from "./ClickSpark";
 export { AnimatedList } from "./AnimatedList";
+export { Stepper } from "./Stepper";
+export type { StepConfig, StepperProps } from "./Stepper";

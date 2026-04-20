@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { env } from "./env";
+import { userManager } from "./oidc";
 
 /** Shape of error responses returned by the OAD API (apierr package). */
 export interface ApiError {
@@ -37,10 +38,33 @@ type RequestOptions = Omit<RequestInit, "body"> & {
 // ─── Token injection ─────────────────────────────────────────────────────────
 
 // Registered by AuthProvider so every request carries the current access token.
+// Optional override — when null, requests fall back to the sync localStorage read.
 let tokenGetter: (() => string | null) | null = null;
 
 export function setTokenGetter(fn: () => string | null): void {
   tokenGetter = fn;
+}
+
+/**
+ * Synchronous fallback that reads the access token directly from oidc-client-ts's
+ * user store (localStorage). Required to avoid a race on full-page reload (F5):
+ * children's `useEffect` fires before the parent AuthProvider's `useEffect`
+ * updates `tokenGetter` from React state, so the first round of API calls would
+ * otherwise go out unauthenticated → 401 → forced logout.
+ */
+function readStoredAccessToken(): string | null {
+  try {
+    const { authority, client_id } = userManager.settings;
+    const raw = window.localStorage.getItem(`oidc.user:${authority}:${client_id}`);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as { access_token?: string; expires_at?: number };
+    if (typeof data.expires_at === "number" && data.expires_at < Date.now() / 1000) {
+      return null;
+    }
+    return typeof data.access_token === "string" ? data.access_token : null;
+  } catch {
+    return null;
+  }
 }
 
 // ─── 401 handler ─────────────────────────────────────────────────────────────
@@ -86,7 +110,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     headers.set("Content-Type", "application/json");
   }
 
-  const resolvedToken = token ?? tokenGetter?.() ?? undefined;
+  const resolvedToken = token ?? tokenGetter?.() ?? readStoredAccessToken() ?? undefined;
   if (resolvedToken) {
     headers.set("Authorization", `Bearer ${resolvedToken}`);
   }

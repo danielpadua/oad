@@ -101,37 +101,37 @@
 
 #### Phase 7.5 — Platform Admin: Schema Registry
 
-59. [ ] Entity Type Definition list with filter by scope (global/system)
-60. [ ] Entity Type Definition create/edit form via `Stepper` — `allowed_properties` (JSON Schema) and `allowed_relations`
-61. [ ] Entity Type Definition detail view with usage count and delete guard
-62. [ ] System list with `SpotlightCard` overview, register form, edit metadata, deactivate with audit note
-63. [ ] System Overlay Schema list per system with namespace prefix preview and validation
-64. [ ] System Overlay Schema create/edit with live schema validation
+59. [x] Entity Type Definition list with filter by scope (global/system)
+60. [x] Entity Type Definition create/edit form via `Stepper` — `allowed_properties` (JSON Schema) and `allowed_relations`
+61. [x] Entity Type Definition detail view with usage count and delete guard
+62. [x] System list with `SpotlightCard` overview, register form, edit metadata, deactivate with audit note
+63. [x] System Overlay Schema list per system with namespace prefix preview and validation
+64. [x] System Overlay Schema create/edit with live schema validation
 
 #### Phase 7.6 — Entities & Relations (Core CRUD)
 
-65. [ ] Entity list: filter by type, external_id search, JSONB property filter builder, server pagination
-66. [ ] Entity detail with tabs: Properties, Relations, Overlays, Audit
-67. [ ] Entity create/edit — dynamic form generated from type definition `allowed_properties`
-68. [ ] Entity delete with relation-dependency warning
-69. [ ] Relation creation (subject picker, target picker, type restricted to `allowed_relations`)
-70. [ ] Relation list on entity detail with filters and removal
-71. [ ] Bulk import view via `Stepper` wizard: file upload (JSON), validation preview, per-item summary, partial-failure report
+65. [x] Entity list: filter by type, external_id search, JSONB property filter builder, server pagination
+66. [x] Entity detail with tabs: Properties, Relations, Overlays, Audit
+67. [x] Entity create/edit — dynamic form generated from type definition `allowed_properties`
+68. [x] Entity delete with relation-dependency warning
+69. [x] Relation creation (subject picker, target picker, type restricted to `allowed_relations`)
+70. [x] Relation list on entity detail with filters and removal
+71. [x] Bulk import view via `Stepper` wizard: file upload (JSON), validation preview, per-item summary, partial-failure report
 
 #### Phase 7.7 — Product Team: Overlays
 
-72. [ ] Overlay list for current system scope
-73. [ ] Overlay create: entity search, dynamic form from overlay schema, namespaced key display
-74. [ ] Overlay edit and delete within system scope
-75. [ ] Merged-view preview (global + overlay) on entity detail
+72. [x] Overlay list for current system scope
+73. [x] Overlay create: entity search, dynamic form from overlay schema, namespaced key display
+74. [x] Overlay edit and delete within system scope
+75. [x] Merged-view preview (global + overlay) on entity detail
 
 #### Phase 7.8 — Observability Views
 
-76. [ ] Audit log viewer with `AnimatedList` entries: filters (entity, system, actor, operation, time range), paginated — FR-MGT-005
-77. [ ] Audit detail drawer with before/after diff renderer
-78. [ ] Retrieval log viewer (compliance persona, read-only) — FR-AUD-002
-79. [ ] Webhook subscription CRUD per system (callback URL, HMAC secret generation, activation toggle) — FR-WHK-003
-80. [ ] Webhook delivery history view (recent attempts, retry counter, last status)
+76. [x] Audit log viewer with `AnimatedList` entries: filters (entity, system, actor, operation, time range), paginated — FR-MGT-005
+77. [x] Audit detail drawer with before/after diff renderer
+78. [x] Retrieval log viewer (compliance persona, read-only) — FR-AUD-002
+79. [x] Webhook subscription CRUD per system (callback URL, HMAC secret generation, activation toggle) — FR-WHK-003
+80. [x] Webhook delivery history view (recent attempts, retry counter, last status)
 
 #### Phase 7.9 — Polish & UI Testing
 

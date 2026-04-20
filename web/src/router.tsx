@@ -11,6 +11,18 @@ const Login = lazy(() => import("@/pages/Login"));
 const Callback = lazy(() => import("@/pages/Callback"));
 const SilentRenew = lazy(() => import("@/pages/SilentRenew"));
 const Forbidden = lazy(() => import("@/pages/Forbidden"));
+const EntityTypes = lazy(() => import("@/pages/EntityTypes"));
+const EntityTypeDetail = lazy(() => import("@/pages/EntityTypeDetail"));
+const EntityTypeFormPage = lazy(() => import("@/pages/EntityTypeFormPage"));
+const Systems = lazy(() => import("@/pages/Systems"));
+const SystemDetail = lazy(() => import("@/pages/SystemDetail"));
+const OverlaySchemaFormPage = lazy(() => import("@/pages/OverlaySchemaFormPage"));
+const Entities = lazy(() => import("@/pages/Entities"));
+const EntityDetail = lazy(() => import("@/pages/EntityDetail"));
+const EntityFormPage = lazy(() => import("@/pages/EntityFormPage"));
+const Overlays = lazy(() => import("@/pages/Overlays"));
+const AuditLog = lazy(() => import("@/pages/AuditLog"));
+const Webhooks = lazy(() => import("@/pages/Webhooks"));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -32,17 +44,143 @@ function PageLoader() {
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
+function Protected({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <ProtectedRoute>
+        <PageTransition>{children}</PageTransition>
+      </ProtectedRoute>
+    </Suspense>
+  );
+}
+
 const protectedRoutes: RouteObject[] = [
   {
     index: true,
     element: (
-      <Suspense fallback={<PageLoader />}>
-        <ProtectedRoute>
-          <PageTransition>
-            <Dashboard />
-          </PageTransition>
-        </ProtectedRoute>
-      </Suspense>
+      <Protected>
+        <Dashboard />
+      </Protected>
+    ),
+  },
+  {
+    path: "entity-types",
+    element: (
+      <Protected>
+        <EntityTypes />
+      </Protected>
+    ),
+  },
+  {
+    path: "entity-types/new",
+    element: (
+      <Protected>
+        <EntityTypeFormPage />
+      </Protected>
+    ),
+  },
+  {
+    path: "entity-types/:id",
+    element: (
+      <Protected>
+        <EntityTypeDetail />
+      </Protected>
+    ),
+  },
+  {
+    path: "entity-types/:id/edit",
+    element: (
+      <Protected>
+        <EntityTypeFormPage />
+      </Protected>
+    ),
+  },
+  {
+    path: "systems",
+    element: (
+      <Protected>
+        <Systems />
+      </Protected>
+    ),
+  },
+  {
+    path: "systems/:id",
+    element: (
+      <Protected>
+        <SystemDetail />
+      </Protected>
+    ),
+  },
+  {
+    path: "systems/:id/overlay-schemas/new",
+    element: (
+      <Protected>
+        <OverlaySchemaFormPage />
+      </Protected>
+    ),
+  },
+  {
+    path: "systems/:id/overlay-schemas/:schemaId/edit",
+    element: (
+      <Protected>
+        <OverlaySchemaFormPage />
+      </Protected>
+    ),
+  },
+  {
+    path: "entities",
+    element: (
+      <Protected>
+        <Entities />
+      </Protected>
+    ),
+  },
+  {
+    path: "entities/new",
+    element: (
+      <Protected>
+        <EntityFormPage />
+      </Protected>
+    ),
+  },
+  {
+    path: "entities/:id",
+    element: (
+      <Protected>
+        <EntityDetail />
+      </Protected>
+    ),
+  },
+  {
+    path: "entities/:id/edit",
+    element: (
+      <Protected>
+        <EntityFormPage />
+      </Protected>
+    ),
+  },
+  {
+    path: "overlays",
+    element: (
+      <Protected>
+        <Overlays />
+      </Protected>
+    ),
+  },
+  {
+    path: "audit",
+    element: (
+      <Protected>
+        <AuditLog />
+      </Protected>
+    ),
+  },
+  {
+    path: "webhooks",
+    element: (
+      <Protected>
+        <Webhooks />
+      </Protected>
     ),
   },
 ];

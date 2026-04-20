@@ -13,8 +13,14 @@ const settings: UserManagerSettings = {
   automaticSilentRenew: true,
   silent_redirect_uri: `${window.location.origin}/silent-renew`,
 
-  // Session state lives in sessionStorage — cleared on tab close, never persisted to disk.
-  userStore: new WebStorageStateStore({ store: window.sessionStorage }),
+  // Disable iframe-based session monitoring: on localhost the SPA (port 5173) and Keycloak
+  // (port 8081) are different origins, so SameSite=Lax cookies are not sent in the hidden
+  // check-session iframe. The monitor would fire SessionChanged → removeUser() on every
+  // page load, dropping the session immediately after F5.
+  monitorSession: false,
+
+  // Session state in localStorage survives F5 and tab reopening — acceptable for dev.
+  userStore: new WebStorageStateStore({ store: window.localStorage }),
 
   filterProtocolClaims: true,
   loadUserInfo: false,

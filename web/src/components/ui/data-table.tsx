@@ -58,7 +58,7 @@ function DataTableColumnHeader({
   return (
     <button
       className={cn(
-        "group/header inline-flex items-center gap-1.5 text-sm font-medium transition-colors hover:text-foreground",
+        "group/header inline-flex cursor-pointer items-center gap-1.5 text-sm font-medium transition-colors hover:text-foreground",
         className
       )}
       onClick={() => column.toggleSorting(sorted === "asc")}

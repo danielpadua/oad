@@ -50,7 +50,7 @@ export default function Login() {
         <button
           onClick={handleLogin}
           disabled={isLoading}
-          className="rounded-md bg-primary px-10 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+          className="cursor-pointer rounded-md bg-primary px-10 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
         >
           {isLoading ? "Checking session…" : "Sign in with SSO"}
         </button>
