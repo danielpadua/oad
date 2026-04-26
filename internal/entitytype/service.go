@@ -12,9 +12,27 @@ import (
 
 	"github.com/danielpadua/oad/internal/apierr"
 	"github.com/danielpadua/oad/internal/audit"
+	"github.com/danielpadua/oad/internal/auth"
 	"github.com/danielpadua/oad/internal/db"
 	"github.com/danielpadua/oad/internal/validation"
 )
+
+// requirePlatformAdminForGlobal rejects mutations on globally-scoped entity
+// types when the caller is bound to a specific system. Global type definitions
+// cross tenant boundaries, so they must only be managed by platform admins.
+func requirePlatformAdminForGlobal(ctx context.Context, scope string) error {
+	if scope != ScopeGlobal {
+		return nil
+	}
+	identity, ok := auth.IdentityFromContext(ctx)
+	if !ok {
+		return apierr.Unauthorized("missing identity")
+	}
+	if identity.SystemID != "" {
+		return apierr.Forbidden("only platform admins may manage global entity types")
+	}
+	return nil
+}
 
 // Service orchestrates business logic for entity type definitions.
 // Every mutation runs inside a transaction that also writes the audit record,
@@ -34,6 +52,9 @@ func NewService(pool *pgxpool.Pool, repo Repository, auditSvc *audit.Service) *S
 func (s *Service) Create(ctx context.Context, req CreateRequest) (*EntityTypeDefinition, error) {
 	if apiErr := validateCreate(req); apiErr != nil {
 		return nil, apiErr
+	}
+	if err := requirePlatformAdminForGlobal(ctx, req.Scope); err != nil {
+		return nil, err
 	}
 
 	etd := &EntityTypeDefinition{
@@ -95,6 +116,9 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (
 		if err != nil {
 			return err
 		}
+		if err := requirePlatformAdminForGlobal(ctx, existing.Scope); err != nil {
+			return err
+		}
 		beforeJSON, _ := json.Marshal(existing)
 
 		existing.AllowedProperties = req.AllowedProperties
@@ -122,6 +146,13 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (
 // Delete removes an entity type definition (FR-ETD-003).
 // Returns an error when entities of this type still exist.
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+	existing, err := s.repo.GetByID(ctx, s.pool, id)
+	if err != nil {
+		return toAPIError(err)
+	}
+	if err := requirePlatformAdminForGlobal(ctx, existing.Scope); err != nil {
+		return err
+	}
 	// Pre-check outside the transaction to return a descriptive error early
 	// (the FK constraint provides defense-in-depth inside the transaction).
 	hasEntities, err := s.repo.HasEntities(ctx, s.pool, id)

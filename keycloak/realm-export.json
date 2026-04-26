@@ -107,6 +107,7 @@
       ],
       "attributes": {
         "oad_roles": [
+          "admin",
           "editor"
         ],
         "oad_system_id": [

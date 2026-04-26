@@ -49,6 +49,24 @@ func RequireAnyRole(roles ...string) func(http.Handler) http.Handler {
 	}
 }
 
+// RequirePlatformAdmin returns middleware that rejects requests from identities
+// bound to a specific system scope. Only unscoped identities (SystemID == "") —
+// platform administrators — may pass. Must be chained after Authentication.
+func RequirePlatformAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		identity, ok := auth.IdentityFromContext(r.Context())
+		if !ok {
+			response.Error(w, apierr.Unauthorized("missing identity"))
+			return
+		}
+		if identity.SystemID != "" {
+			response.Error(w, apierr.Forbidden("platform admin required"))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // RequireSystemScope returns middleware that verifies the caller is authorized
 // for the system identified by the given URL parameter. Platform admins
 // (empty SystemID) bypass the check — they have access to all systems.

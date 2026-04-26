@@ -139,6 +139,8 @@ func run() error {
 		RetrievalHandler: handler.NewRetrievalHandler(retrievalSvc),
 
 		WebhookHandler: handler.NewWebhookHandler(webhookSvc),
+
+		StatsHandler: handler.NewStatsHandler(pool),
 	})
 
 	// Start the webhook dispatcher as a background goroutine.

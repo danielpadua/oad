@@ -12,6 +12,7 @@ import (
 
 	"github.com/danielpadua/oad/internal/apierr"
 	"github.com/danielpadua/oad/internal/audit"
+	"github.com/danielpadua/oad/internal/auth"
 	"github.com/danielpadua/oad/internal/db"
 )
 
@@ -79,9 +80,22 @@ func (s *Service) List(ctx context.Context) ([]*System, error) {
 
 // Patch applies partial updates to a system (FR-SYS-002, FR-SYS-003).
 // Setting Active to false deactivates the system without deleting its data.
+//
+// Authorization: platform admins (unscoped identities) may change any field.
+// System-scoped admins are restricted to the `description` field of their own
+// system — name changes and activation toggles are reserved for platform admins.
 func (s *Service) Patch(ctx context.Context, id uuid.UUID, req PatchRequest) (*System, error) {
 	if req.Name != nil && *req.Name == "" {
 		return nil, apierr.BadRequest("name cannot be empty")
+	}
+
+	if identity, ok := auth.IdentityFromContext(ctx); ok && identity.SystemID != "" {
+		if identity.SystemID != id.String() {
+			return nil, apierr.Forbidden("access denied to system " + id.String())
+		}
+		if req.Name != nil || req.Active != nil {
+			return nil, apierr.Forbidden("only platform admins may change name or active state")
+		}
 	}
 
 	var result *System

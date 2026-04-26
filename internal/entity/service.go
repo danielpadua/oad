@@ -12,6 +12,7 @@ import (
 
 	"github.com/danielpadua/oad/internal/apierr"
 	"github.com/danielpadua/oad/internal/audit"
+	"github.com/danielpadua/oad/internal/auth"
 	"github.com/danielpadua/oad/internal/db"
 	"github.com/danielpadua/oad/internal/validation"
 )
@@ -49,7 +50,12 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (*Entity, error
 		return nil, apiErr
 	}
 
-	if apiErr := validateScopeConstraints(typeDef, req.SystemID); apiErr != nil {
+	effectiveSystemID, apiErr := resolveEffectiveSystemID(ctx, req.SystemID)
+	if apiErr != nil {
+		return nil, apiErr
+	}
+
+	if apiErr := validateScopeConstraints(typeDef, effectiveSystemID); apiErr != nil {
 		return nil, apiErr
 	}
 
@@ -67,7 +73,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (*Entity, error
 		Type:       typeDef.TypeName,
 		ExternalID: req.ExternalID,
 		Properties: props,
-		SystemID:   req.SystemID,
+		SystemID:   effectiveSystemID,
 	}
 
 	err := db.WithAuthScope(ctx, s.pool, func(tx pgx.Tx) error {
@@ -255,7 +261,13 @@ func (s *Service) createOrUpdate(ctx context.Context, req CreateRequest) (bool, 
 		return false, apiErr
 	}
 
-	if apiErr := validateScopeConstraints(typeDef, req.SystemID); apiErr != nil {
+	effectiveSystemID, apiErr := resolveEffectiveSystemID(ctx, req.SystemID)
+	if apiErr != nil {
+		return false, apiErr
+	}
+	req.SystemID = effectiveSystemID
+
+	if apiErr := validateScopeConstraints(typeDef, effectiveSystemID); apiErr != nil {
 		return false, apiErr
 	}
 
@@ -314,6 +326,25 @@ func validateCreateRequest(req CreateRequest) *apierr.APIError {
 		return apierr.BadRequest("external_id is required")
 	}
 	return nil
+}
+
+// resolveEffectiveSystemID reconciles the request's system_id with the caller's
+// identity. System-scoped callers have their system_id derived from the token
+// (the body field is optional); they may not target a different system.
+// Platform admins pass through whatever the body specifies.
+func resolveEffectiveSystemID(ctx context.Context, reqSystemID *uuid.UUID) (*uuid.UUID, *apierr.APIError) {
+	identity, ok := auth.IdentityFromContext(ctx)
+	if !ok || identity.SystemID == "" {
+		return reqSystemID, nil
+	}
+	callerSys, err := uuid.Parse(identity.SystemID)
+	if err != nil {
+		return nil, apierr.Unauthorized("invalid system scope in identity")
+	}
+	if reqSystemID != nil && *reqSystemID != callerSys {
+		return nil, apierr.Forbidden("cannot target a system outside caller scope")
+	}
+	return &callerSys, nil
 }
 
 // validateScopeConstraints enforces system_id rules based on entity type scope.

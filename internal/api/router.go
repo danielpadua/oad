@@ -46,6 +46,9 @@ type Dependencies struct {
 
 	// Phase 6 handlers — Webhooks
 	WebhookHandler *handler.WebhookHandler
+
+	// Phase 7 handlers — Dashboard
+	StatsHandler *handler.StatsHandler
 }
 
 // NewRouter constructs the Chi router with all middleware and routes registered.
@@ -99,7 +102,9 @@ func NewRouter(deps Dependencies) http.Handler {
 		r.Route("/systems", func(r chi.Router) {
 			r.Use(middleware.RequireRole("admin"))
 			r.Get("/", deps.SystemHandler.List)
-			r.Post("/", deps.SystemHandler.Create)
+			// Registering a new system is a platform-level action: it carves out
+			// a new tenant, so only unscoped platform admins may perform it.
+			r.With(middleware.RequirePlatformAdmin).Post("/", deps.SystemHandler.Create)
 
 			r.Route("/{system_id}", func(r chi.Router) {
 				r.Get("/", deps.SystemHandler.GetByID)
@@ -131,6 +136,11 @@ func NewRouter(deps Dependencies) http.Handler {
 				})
 			})
 		})
+
+		// ── Dashboard stats ──────────────────────────────────────────────
+		// Aggregate counters for the management UI. Open to any authenticated
+		// caller; counts are global regardless of the caller's system scope.
+		r.Get("/stats", deps.StatsHandler.Get)
 
 		// ── Phase 5 — Retrieval API (top-level) ──────────────────────────
 		// These endpoints are open to all authenticated callers (PDPs, control planes).
