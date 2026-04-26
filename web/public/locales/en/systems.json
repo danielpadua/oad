@@ -1,0 +1,43 @@
+{
+  "title": "Systems",
+  "subtitle": "Registered applications managed in the Open Authoritative Directory",
+  "register": "Register System",
+  "empty": "No systems registered yet",
+  "emptyHint": "Register your first application to get started.",
+  "sections": {
+    "active": "Active ({{count}})",
+    "inactive": "Inactive ({{count}})"
+  },
+  "form": {
+    "register": {
+      "title": "Register System",
+      "description": "Add a new application to the Open Authoritative Directory."
+    },
+    "edit": {
+      "title": "Edit System"
+    },
+    "fields": {
+      "name": "System Name",
+      "namePlaceholder": "e.g. credit, inventory",
+      "description": "Description",
+      "descriptionPlaceholder": "Short description of this system (optional)",
+      "renameRestricted": "Only platform admins may rename a system."
+    },
+    "submit": {
+      "register": "Register",
+      "registering": "Registering…",
+      "save": "Save Changes",
+      "saving": "Saving…"
+    }
+  },
+  "actions": {
+    "view": "View",
+    "edit": "Edit",
+    "deactivate": "Deactivate",
+    "activate": "Activate"
+  },
+  "deactivate": {
+    "title": "Deactivate \"{{name}}\"?",
+    "description": "This will deactivate the system. Its data is preserved and can be reactivated."
+  }
+}

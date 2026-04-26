@@ -44,7 +44,10 @@ function ConfirmDialog({
         <DialogHeader>
           <div className="flex items-start gap-3">
             {variant === "destructive" && (
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-destructive/10">
+              <div
+                className="flex size-9 shrink-0 items-center justify-center rounded-full bg-destructive/10"
+                aria-hidden
+              >
                 <AlertTriangle className="size-4 text-destructive" />
               </div>
             )}

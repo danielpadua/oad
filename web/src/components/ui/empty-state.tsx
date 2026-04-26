@@ -25,7 +25,7 @@ function EmptyState({
       )}
     >
       {Icon && (
-        <div className="flex size-12 items-center justify-center rounded-full bg-muted">
+        <div className="flex size-12 items-center justify-center rounded-full bg-muted" aria-hidden>
           <Icon className="size-5 text-muted-foreground" />
         </div>
       )}

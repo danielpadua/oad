@@ -5,11 +5,13 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Plus, Pencil, PowerOff, Power, Eye, Network } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 import { http } from "@/lib/http-client"
 import type { HttpError } from "@/lib/http-client"
 import { toastSuccess, toastMutationError } from "@/lib/toast"
 import type { System, ListResponse } from "@/lib/types"
+import { useAuth } from "@/contexts/AuthContext"
 import { FadeContent, SpotlightCard, ClickSpark } from "@/components/reactbits"
 import { Modal } from "@/components/ui/modal"
 import { Drawer } from "@/components/ui/drawer"
@@ -92,6 +94,8 @@ function RegisterSystemModal({
   open: boolean
   onOpenChange: (o: boolean) => void
 }) {
+  const { t } = useTranslation("systems")
+  const { t: tc } = useTranslation()
   const createMutation = useCreateSystem()
   const form = useForm<CreateValues>({
     resolver: zodResolver(createSchema),
@@ -114,8 +118,8 @@ function RegisterSystemModal({
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title="Register System"
-      description="Add a new application to the Open Authoritative Directory."
+      title={t("form.register.title")}
+      description={t("form.register.description")}
       footer={
         <div className="flex w-full flex-row items-center justify-between">
           <Button
@@ -123,7 +127,7 @@ function RegisterSystemModal({
             onClick={() => onOpenChange(false)}
             disabled={createMutation.isPending}
           >
-            Cancel
+            {tc("actions.cancel")}
           </Button>
           <ClickSpark
             color="hsl(var(--primary))"
@@ -133,7 +137,9 @@ function RegisterSystemModal({
               onClick={form.handleSubmit(onSubmit)}
               disabled={createMutation.isPending}
             >
-              {createMutation.isPending ? "Registering…" : "Register"}
+              {createMutation.isPending
+                ? t("form.submit.registering")
+                : t("form.submit.register")}
             </Button>
           </ClickSpark>
         </div>
@@ -146,9 +152,9 @@ function RegisterSystemModal({
             name="name"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>System Name</FormLabel>
+                <FormLabel>{t("form.fields.name")}</FormLabel>
                 <FormControl>
-                  <Input placeholder="e.g. credit, inventory" {...field} />
+                  <Input placeholder={t("form.fields.namePlaceholder")} {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -159,10 +165,10 @@ function RegisterSystemModal({
             name="description"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Description</FormLabel>
+                <FormLabel>{t("form.fields.description")}</FormLabel>
                 <FormControl>
                   <Textarea
-                    placeholder="Short description of this system (optional)"
+                    placeholder={t("form.fields.descriptionPlaceholder")}
                     rows={3}
                     {...field}
                   />
@@ -182,12 +188,16 @@ function RegisterSystemModal({
 function EditSystemDrawer({
   system,
   open,
+  nameReadOnly,
   onOpenChange,
 }: {
   system: System | undefined
   open: boolean
+  nameReadOnly: boolean
   onOpenChange: (o: boolean) => void
 }) {
+  const { t } = useTranslation("systems")
+  const { t: tc } = useTranslation()
   const patchMutation = usePatchSystem()
   const form = useForm<EditValues>({
     resolver: zodResolver(editSchema),
@@ -196,11 +206,12 @@ function EditSystemDrawer({
 
   function onSubmit(values: EditValues) {
     if (!system) return
+    const data: { name?: string; description?: string } = {
+      description: values.description || undefined,
+    }
+    if (!nameReadOnly) data.name = values.name
     patchMutation.mutate(
-      {
-        id: system.id,
-        data: { name: values.name, description: values.description || undefined },
-      },
+      { id: system.id, data },
       { onSuccess: () => onOpenChange(false) }
     )
   }
@@ -209,7 +220,7 @@ function EditSystemDrawer({
     <Drawer
       open={open}
       onOpenChange={onOpenChange}
-      title={`Edit: ${system?.name}`}
+      title={`${t("form.edit.title")}: ${system?.name}`}
       width="md"
       footer={
         <div className="flex w-full gap-2 justify-end">
@@ -218,7 +229,7 @@ function EditSystemDrawer({
             onClick={() => onOpenChange(false)}
             disabled={patchMutation.isPending}
           >
-            Cancel
+            {tc("actions.cancel")}
           </Button>
           <ClickSpark
             color="hsl(var(--primary))"
@@ -228,7 +239,9 @@ function EditSystemDrawer({
               onClick={form.handleSubmit(onSubmit)}
               disabled={patchMutation.isPending}
             >
-              {patchMutation.isPending ? "Saving…" : "Save Changes"}
+              {patchMutation.isPending
+                ? t("form.submit.saving")
+                : t("form.submit.save")}
             </Button>
           </ClickSpark>
         </div>
@@ -241,10 +254,15 @@ function EditSystemDrawer({
             name="name"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>System Name</FormLabel>
+                <FormLabel>{t("form.fields.name")}</FormLabel>
                 <FormControl>
-                  <Input {...field} />
+                  <Input {...field} disabled={nameReadOnly} readOnly={nameReadOnly} />
                 </FormControl>
+                {nameReadOnly && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("form.fields.renameRestricted")}
+                  </p>
+                )}
                 <FormMessage />
               </FormItem>
             )}
@@ -254,7 +272,7 @@ function EditSystemDrawer({
             name="description"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Description</FormLabel>
+                <FormLabel>{t("form.fields.description")}</FormLabel>
                 <FormControl>
                   <Textarea rows={3} {...field} />
                 </FormControl>
@@ -272,15 +290,20 @@ function EditSystemDrawer({
 
 function SystemCard({
   system,
+  canToggleActive,
   onEdit,
   onActivate,
   onDeactivate,
 }: {
   system: System
+  canToggleActive: boolean
   onEdit: (s: System) => void
   onActivate: (s: System) => void
   onDeactivate: (s: System) => void
 }) {
+  const { t } = useTranslation("systems")
+  const { t: tc } = useTranslation()
+
   return (
     <SpotlightCard
       spotlightColor={
@@ -298,7 +321,7 @@ function SystemCard({
             <div className="flex items-center gap-2">
               <p className="truncate font-semibold">{system.name}</p>
               <Badge variant={system.active ? "default" : "secondary"}>
-                {system.active ? "Active" : "Inactive"}
+                {system.active ? tc("status.active") : tc("status.inactive")}
               </Badge>
             </div>
             {system.description && (
@@ -316,32 +339,33 @@ function SystemCard({
         <Button variant="ghost" size="sm" asChild>
           <Link to={`/systems/${system.id}`}>
             <Eye className="mr-1 size-3.5" />
-            View
+            {t("actions.view")}
           </Link>
         </Button>
         <Button variant="ghost" size="sm" onClick={() => onEdit(system)}>
           <Pencil className="mr-1 size-3.5" />
-          Edit
+          {t("actions.edit")}
         </Button>
-        {system.active ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onDeactivate(system)}
-          >
-            <PowerOff className="mr-1 size-3.5 text-destructive" />
-            Deactivate
-          </Button>
-        ) : (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onActivate(system)}
-          >
-            <Power className="mr-1 size-3.5 text-primary" />
-            Activate
-          </Button>
-        )}
+        {canToggleActive &&
+          (system.active ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onDeactivate(system)}
+            >
+              <PowerOff className="mr-1 size-3.5 text-destructive" />
+              {t("actions.deactivate")}
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onActivate(system)}
+            >
+              <Power className="mr-1 size-3.5 text-primary" />
+              {t("actions.activate")}
+            </Button>
+          ))}
       </div>
     </SpotlightCard>
   )
@@ -350,8 +374,11 @@ function SystemCard({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Systems() {
+  const { t } = useTranslation("systems")
   const { data, isLoading } = useSystems()
   const patchMutation = usePatchSystem()
+  const { identity } = useAuth()
+  const isPlatformAdmin = identity?.systemId == null
 
   const [registerOpen, setRegisterOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<System | undefined>()
@@ -370,15 +397,15 @@ export default function Systems() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Systems</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Registered applications managed in the Open Authoritative Directory
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t("subtitle")}</p>
         </div>
-        <Button onClick={() => setRegisterOpen(true)}>
-          <Plus className="mr-1.5 size-4" />
-          Register System
-        </Button>
+        {isPlatformAdmin && (
+          <Button onClick={() => setRegisterOpen(true)}>
+            <Plus className="mr-1.5 size-4" />
+            {t("register")}
+          </Button>
+        )}
       </div>
 
       {/* Cards */}
@@ -392,28 +419,31 @@ export default function Systems() {
         <div className="flex flex-col items-center gap-4 py-16 text-center">
           <Network className="size-10 text-muted-foreground/40" />
           <div>
-            <p className="font-medium">No systems registered yet</p>
-            <p className="text-sm text-muted-foreground">
-              Register your first application to get started.
-            </p>
+            <p className="font-medium">{t("empty")}</p>
+            {isPlatformAdmin && (
+              <p className="text-sm text-muted-foreground">{t("emptyHint")}</p>
+            )}
           </div>
-          <Button onClick={() => setRegisterOpen(true)}>
-            <Plus className="mr-1.5 size-4" />
-            Register System
-          </Button>
+          {isPlatformAdmin && (
+            <Button onClick={() => setRegisterOpen(true)}>
+              <Plus className="mr-1.5 size-4" />
+              {t("register")}
+            </Button>
+          )}
         </div>
       ) : (
         <div className="space-y-6">
           {activeSystems.length > 0 && (
             <section>
               <h2 className="mb-3 text-sm font-medium uppercase tracking-widest text-muted-foreground">
-                Active ({activeSystems.length})
+                {t("sections.active", { count: activeSystems.length })}
               </h2>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {activeSystems.map((sys) => (
                   <SystemCard
                     key={sys.id}
                     system={sys}
+                    canToggleActive={isPlatformAdmin}
                     onEdit={setEditTarget}
                     onActivate={handleActivate}
                     onDeactivate={setDeactivateTarget}
@@ -425,13 +455,14 @@ export default function Systems() {
           {inactiveSystems.length > 0 && (
             <section>
               <h2 className="mb-3 text-sm font-medium uppercase tracking-widest text-muted-foreground">
-                Inactive ({inactiveSystems.length})
+                {t("sections.inactive", { count: inactiveSystems.length })}
               </h2>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {inactiveSystems.map((sys) => (
                   <SystemCard
                     key={sys.id}
                     system={sys}
+                    canToggleActive={isPlatformAdmin}
                     onEdit={setEditTarget}
                     onActivate={handleActivate}
                     onDeactivate={setDeactivateTarget}
@@ -453,6 +484,7 @@ export default function Systems() {
       <EditSystemDrawer
         system={editTarget}
         open={!!editTarget}
+        nameReadOnly={!isPlatformAdmin}
         onOpenChange={(o) => !o && setEditTarget(undefined)}
       />
 
@@ -460,9 +492,9 @@ export default function Systems() {
       <ConfirmDialog
         open={!!deactivateTarget}
         onOpenChange={(o) => !o && setDeactivateTarget(undefined)}
-        title={`Deactivate "${deactivateTarget?.name}"?`}
-        description="The system will be marked as inactive. Existing data is preserved and can be restored by editing the system."
-        confirmLabel="Deactivate"
+        title={t("deactivate.title", { name: deactivateTarget?.name })}
+        description={t("deactivate.description")}
+        confirmLabel={t("actions.deactivate")}
         isLoading={patchMutation.isPending}
         onConfirm={async () => {
           if (deactivateTarget) {

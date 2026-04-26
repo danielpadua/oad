@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { LogOut, ChevronDown, Layers } from "lucide-react";
+import { LogOut, ChevronDown, Layers, Menu } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { GradientText, BorderGlow } from "@/components/reactbits";
 import { useAuth } from "@/contexts/AuthContext";
 import { useScope } from "@/contexts/ScopeContext";
 import { useRole } from "@/components/auth/RoleGate";
 import { http, type HttpError } from "@/lib/http-client";
 import { cn } from "@/lib/utils";
+import { LocaleSwitcher } from "@/components/layout/LocaleSwitcher";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,6 +38,7 @@ function useSystemsList(enabled: boolean) {
 // ─── System scope selector (platform admins only) ────────────────────────────
 
 function SystemScopeSelector() {
+  const { t } = useTranslation();
   const { activeSystemId, setActiveSystemId } = useScope();
   const { data } = useSystemsList(true);
   const [open, setOpen] = useState(false);
@@ -57,7 +60,7 @@ function SystemScopeSelector() {
       aria-expanded={open}
     >
       <Layers className="h-3.5 w-3.5 flex-shrink-0" />
-      <span className="max-w-36 truncate">{activeName ?? "All Systems"}</span>
+      <span className="max-w-36 truncate">{activeName ?? t("topbar.allSystems")}</span>
       <ChevronDown className={cn("h-3 w-3 transition-transform", open && "rotate-180")} />
     </button>
   );
@@ -91,7 +94,7 @@ function SystemScopeSelector() {
                 setOpen(false);
               }}
             >
-              All Systems
+              {t("topbar.allSystems")}
             </button>
 
             {activeSystems.length > 0 && <div className="my-1 border-t border-border" />}
@@ -123,6 +126,7 @@ function SystemScopeSelector() {
 // ─── User menu ────────────────────────────────────────────────────────────────
 
 function UserMenu() {
+  const { t } = useTranslation();
   const { identity, logout } = useAuth();
   const [open, setOpen] = useState(false);
 
@@ -177,7 +181,7 @@ function UserMenu() {
               }}
             >
               <LogOut className="h-3.5 w-3.5" />
-              Sign out
+              {t("topbar.signOut")}
             </button>
           </div>
         </>
@@ -188,11 +192,24 @@ function UserMenu() {
 
 // ─── TopBar ───────────────────────────────────────────────────────────────────
 
-export function TopBar() {
+interface TopBarProps {
+  onMenuToggle?: () => void;
+}
+
+export function TopBar({ onMenuToggle }: TopBarProps) {
   const { isPlatformAdmin } = useRole();
 
   return (
-    <header className="flex h-14 items-center gap-4 border-b border-border bg-card px-6">
+    <header className="flex h-14 items-center gap-3 border-b border-border bg-card px-4 sm:px-6">
+      {/* Hamburger — only visible on mobile */}
+      <button
+        className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:hidden"
+        onClick={onMenuToggle}
+        aria-label="Open navigation"
+      >
+        <Menu className="size-5" />
+      </button>
+
       <Link to="/" className="flex items-center gap-2 no-underline">
         <GradientText
           className="text-xl tracking-tight"
@@ -201,12 +218,15 @@ export function TopBar() {
         >
           OAD
         </GradientText>
-        <span className="text-sm text-muted-foreground">Open Authoritative Directory</span>
+        <span className="hidden text-sm text-muted-foreground sm:block">
+          Open Authoritative Directory
+        </span>
       </Link>
 
       <div className="flex-1" />
 
       {isPlatformAdmin && <SystemScopeSelector />}
+      <LocaleSwitcher className="hidden sm:flex" />
       <UserMenu />
     </header>
   );

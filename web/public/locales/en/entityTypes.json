@@ -1,0 +1,34 @@
+{
+  "title": "Entity Types",
+  "subtitle": "Schema registry — define and manage entity type definitions",
+  "new": "New Entity Type",
+  "empty": "No entity types found.",
+  "columns": {
+    "typeName": "Type Name",
+    "scope": "Scope",
+    "created": "Created",
+    "actions": "Actions"
+  },
+  "delete": {
+    "title": "Delete \"{{name}}\"?",
+    "description": "This will permanently delete the entity type definition. Entities of this type must be removed first.",
+    "confirm": "Delete"
+  },
+  "form": {
+    "create": {
+      "title": "New Entity Type",
+      "description": "Define a new entity type schema for the directory."
+    },
+    "edit": {
+      "title": "Edit Entity Type",
+      "description": "Update the entity type definition."
+    },
+    "fields": {
+      "typeName": "Type Name",
+      "typeNamePlaceholder": "e.g. user, resource, role",
+      "scope": "Scope",
+      "allowedProperties": "Allowed Properties (JSON Schema)",
+      "allowedRelations": "Allowed Relations"
+    }
+  }
+}

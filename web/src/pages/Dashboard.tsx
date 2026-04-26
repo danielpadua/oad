@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Activity, Database, Globe, Webhook, AlertCircle, CheckCircle2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { CountUp, FadeContent, SpotlightCard } from "@/components/reactbits";
 import { http, HttpError } from "@/lib/http-client";
 import { cn } from "@/lib/utils";
@@ -15,7 +16,7 @@ interface HealthResponse {
 interface StatsResponse {
   total_entities: number;
   active_systems: number;
-  pending_webhooks: number;
+  subscribed_webhooks: number;
 }
 
 // ─── Queries ─────────────────────────────────────────────────────────────────
@@ -28,17 +29,11 @@ function useHealth() {
   });
 }
 
-// Placeholder until a dedicated /api/v1/stats endpoint exists.
 function useStats() {
   return useQuery<StatsResponse, HttpError>({
     queryKey: ["dashboard-stats"],
-    queryFn: () =>
-      Promise.resolve<StatsResponse>({
-        total_entities: 0,
-        active_systems: 0,
-        pending_webhooks: 0,
-      }),
-    staleTime: Infinity,
+    queryFn: () => http.get<StatsResponse>("/api/v1/stats"),
+    refetchInterval: 30_000,
   });
 }
 
@@ -74,8 +69,10 @@ interface HealthStatusBadgeProps {
 }
 
 function HealthStatusBadge({ status, loading }: HealthStatusBadgeProps) {
+  const { t } = useTranslation("dashboard");
+
   if (loading) {
-    return <span className="text-sm text-muted-foreground">Checking…</span>;
+    return <span className="text-sm text-muted-foreground">{t("health.checking")}</span>;
   }
 
   const isOk = status === "ok";
@@ -93,7 +90,7 @@ function HealthStatusBadge({ status, loading }: HealthStatusBadgeProps) {
       ) : (
         <AlertCircle className="h-3.5 w-3.5" />
       )}
-      {isOk ? "Healthy" : "Degraded"}
+      {isOk ? t("health.healthy") : t("health.degraded")}
     </span>
   );
 }
@@ -101,6 +98,7 @@ function HealthStatusBadge({ status, loading }: HealthStatusBadgeProps) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
+  const { t } = useTranslation("dashboard");
   const { data: health, isLoading: healthLoading } = useHealth();
   const { data: stats, isLoading: statsLoading } = useStats();
 
@@ -108,31 +106,29 @@ export default function Dashboard() {
     <FadeContent duration={0.4} className="space-y-8">
       {/* Page header */}
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Overview of the Open Authoritative Directory
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{t("subtitle")}</p>
       </div>
 
       {/* Metric cards */}
       <section>
         <h2 className="mb-4 text-sm font-medium uppercase tracking-widest text-muted-foreground">
-          Key Metrics
+          {t("keyMetrics")}
         </h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <MetricCard
-            label="Total Entities"
+            label={t("metrics.totalEntities")}
             value={statsLoading ? 0 : (stats?.total_entities ?? 0)}
             icon={Database}
           />
           <MetricCard
-            label="Active Systems"
+            label={t("metrics.activeSystems")}
             value={statsLoading ? 0 : (stats?.active_systems ?? 0)}
             icon={Globe}
           />
           <MetricCard
-            label="Pending Webhooks"
-            value={statsLoading ? 0 : (stats?.pending_webhooks ?? 0)}
+            label={t("metrics.subscribedWebhooks")}
+            value={statsLoading ? 0 : (stats?.subscribed_webhooks ?? 0)}
             icon={Webhook}
           />
         </div>
@@ -141,14 +137,14 @@ export default function Dashboard() {
       {/* System health */}
       <section>
         <h2 className="mb-4 text-sm font-medium uppercase tracking-widest text-muted-foreground">
-          System Health
+          {t("health.title")}
         </h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <SpotlightCard spotlightColor="rgba(56,189,248,0.07)">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Activity className="h-5 w-5 text-muted-foreground" />
-                <span className="font-medium">API Server</span>
+                <span className="font-medium">{t("health.apiServer")}</span>
               </div>
               <HealthStatusBadge status={health?.status} loading={healthLoading} />
             </div>
@@ -158,7 +154,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Database className="h-5 w-5 text-muted-foreground" />
-                <span className="font-medium">Database</span>
+                <span className="font-medium">{t("health.database")}</span>
               </div>
               <HealthStatusBadge status={health?.database} loading={healthLoading} />
             </div>

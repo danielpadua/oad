@@ -10,6 +10,7 @@ import { http } from "@/lib/http-client"
 import type { HttpError } from "@/lib/http-client"
 import { toastSuccess, toastMutationError } from "@/lib/toast"
 import type { EntityTypeDefinition } from "@/lib/types"
+import { useAuth } from "@/contexts/AuthContext"
 import { FadeContent, Stepper, ClickSpark } from "@/components/reactbits"
 import type { StepConfig } from "@/components/reactbits"
 import { PropertyBuilder } from "@/components/ui/property-builder"
@@ -65,6 +66,8 @@ function EntityTypeFormContent({ etd }: FormContentProps) {
   const isEdit = !!etd
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { identity } = useAuth()
+  const isPlatformAdmin = identity?.systemId == null
 
   const steps: StepConfig[] = isEdit
     ? [
@@ -96,7 +99,12 @@ function EntityTypeFormContent({ etd }: FormContentProps) {
 
   const form = useForm<BasicInfoValues>({
     resolver: zodResolver(basicInfoSchema),
-    defaultValues: { type_name: "", scope: "global" },
+    // System-scoped admins may only create system-scoped entity types;
+    // start them on that scope and lock the field below.
+    defaultValues: {
+      type_name: "",
+      scope: isPlatformAdmin ? "global" : "system_scoped",
+    },
   })
 
   // ─── Mutations ──────────────────────────────────────────────────────────────
@@ -232,12 +240,15 @@ function EntityTypeFormContent({ etd }: FormContentProps) {
                     <Select
                       value={field.value}
                       onValueChange={field.onChange}
+                      disabled={!isPlatformAdmin}
                     >
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select scope…" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="global">Global</SelectItem>
+                        {isPlatformAdmin && (
+                          <SelectItem value="global">Global</SelectItem>
+                        )}
                         <SelectItem value="system_scoped">
                           System-Scoped
                         </SelectItem>
@@ -245,8 +256,9 @@ function EntityTypeFormContent({ etd }: FormContentProps) {
                     </Select>
                   </FormControl>
                   <FormDescription>
-                    Global types are shared across all systems. System-scoped
-                    types are owned by a specific system.
+                    {isPlatformAdmin
+                      ? "Global types are shared across all systems. System-scoped types are owned by a specific system."
+                      : "System-scoped types are owned by a specific system. Global types are reserved for platform admins."}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

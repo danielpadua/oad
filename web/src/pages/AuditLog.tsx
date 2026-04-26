@@ -412,10 +412,14 @@ export default function AuditLog() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-border">
+      <div role="tablist" aria-label="Log views" className="flex gap-1 border-b border-border">
         {(["audit", "retrieval"] as const).map((tab) => (
           <button
             key={tab}
+            role="tab"
+            aria-selected={activeTab === tab}
+            aria-controls={`tab-panel-${tab}`}
+            id={`tab-${tab}`}
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
               activeTab === tab
@@ -429,8 +433,11 @@ export default function AuditLog() {
       </div>
 
       {activeTab === "retrieval" ? (
-        <RetrievalLogTab />
+        <div role="tabpanel" id="tab-panel-retrieval" aria-labelledby="tab-retrieval">
+          <RetrievalLogTab />
+        </div>
       ) : (
+        <div role="tabpanel" id="tab-panel-audit" aria-labelledby="tab-audit">
         <>
           {/* Filters */}
           <div className="rounded-lg border border-border bg-card px-4 py-4">
@@ -555,6 +562,7 @@ export default function AuditLog() {
             )}
           </div>
         </>
+        </div>
       )}
 
       <DetailDrawer

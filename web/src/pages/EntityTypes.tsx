@@ -3,11 +3,13 @@ import { Link, useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Plus, Eye, Pencil, Trash2 } from "lucide-react"
 import type { ColumnDef } from "@tanstack/react-table"
+import { useTranslation } from "react-i18next"
 
 import { http } from "@/lib/http-client"
 import type { HttpError } from "@/lib/http-client"
 import { toastSuccess, toastApiError } from "@/lib/toast"
 import type { EntityTypeDefinition, ListResponse } from "@/lib/types"
+import { useAuth } from "@/contexts/AuthContext"
 import { FadeContent } from "@/components/reactbits"
 import { DataTable, DataTableColumnHeader } from "@/components/ui/data-table"
 import { Badge } from "@/components/ui/badge"
@@ -40,12 +42,6 @@ function useDeleteEntityType() {
 
 type ScopeFilter = "all" | "global" | "system_scoped"
 
-const SCOPE_OPTIONS: { value: ScopeFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "global", label: "Global" },
-  { value: "system_scoped", label: "System-Scoped" },
-]
-
 function ScopeFilterBar({
   value,
   onChange,
@@ -53,12 +49,24 @@ function ScopeFilterBar({
   value: ScopeFilter
   onChange: (v: ScopeFilter) => void
 }) {
+  const { t } = useTranslation()
+  const options: { value: ScopeFilter; label: string }[] = [
+    { value: "all", label: t("scope.all") },
+    { value: "global", label: t("scope.global") },
+    { value: "system_scoped", label: t("scope.system_scoped") },
+  ]
+
   return (
-    <div className="flex rounded-lg border border-border bg-muted/40 p-0.5">
-      {SCOPE_OPTIONS.map((opt) => (
+    <div
+      className="flex rounded-lg border border-border bg-muted/40 p-0.5"
+      role="group"
+      aria-label="Filter by scope"
+    >
+      {options.map((opt) => (
         <button
           key={opt.value}
           onClick={() => onChange(opt.value)}
+          aria-pressed={value === opt.value}
           className={
             value === opt.value
               ? "cursor-pointer rounded-md bg-background px-3 py-1 text-sm font-medium shadow-sm"
@@ -74,15 +82,20 @@ function ScopeFilterBar({
 
 // ─── Columns ─────────────────────────────────────────────────────────────────
 
+type TFunc = (key: string, opts?: Record<string, unknown>) => string
+
 function buildColumns(
   onEdit: (etd: EntityTypeDefinition) => void,
-  onDelete: (etd: EntityTypeDefinition) => void
+  onDelete: (etd: EntityTypeDefinition) => void,
+  canMutate: (etd: EntityTypeDefinition) => boolean,
+  t: TFunc,
+  tc: TFunc,
 ): ColumnDef<EntityTypeDefinition>[] {
   return [
     {
       accessorKey: "type_name",
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Type Name" />
+        <DataTableColumnHeader column={column} title={t("columns.typeName")} />
       ),
       cell: ({ row }) => (
         <Link
@@ -95,53 +108,60 @@ function buildColumns(
     },
     {
       accessorKey: "scope",
-      header: "Scope",
+      header: t("columns.scope"),
       cell: ({ row }) => (
         <Badge
           variant={
             row.original.scope === "global" ? "default" : "secondary"
           }
         >
-          {row.original.scope === "global" ? "Global" : "System-Scoped"}
+          {row.original.scope === "global" ? tc("scope.global") : tc("scope.system_scoped")}
         </Badge>
       ),
     },
     {
       accessorKey: "created_at",
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Created" />
+        <DataTableColumnHeader column={column} title={t("columns.created")} />
       ),
       cell: ({ row }) =>
         new Date(row.original.created_at).toLocaleDateString(),
     },
     {
       id: "actions",
-      cell: ({ row }) => (
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" asChild>
-            <Link to={`/entity-types/${row.original.id}`}>
-              <Eye className="size-3.5" />
-              <span className="sr-only">View</span>
-            </Link>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onEdit(row.original)}
-          >
-            <Pencil className="size-3.5" />
-            <span className="sr-only">Edit</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onDelete(row.original)}
-          >
-            <Trash2 className="size-3.5 text-destructive" />
-            <span className="sr-only">Delete</span>
-          </Button>
-        </div>
-      ),
+      cell: ({ row }) => {
+        const mutable = canMutate(row.original)
+        return (
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" asChild>
+              <Link to={`/entity-types/${row.original.id}`}>
+                <Eye className="size-3.5" />
+                <span className="sr-only">{tc("actions.view")}</span>
+              </Link>
+            </Button>
+            {mutable && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onEdit(row.original)}
+                >
+                  <Pencil className="size-3.5" />
+                  <span className="sr-only">{tc("actions.edit")}</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onDelete(row.original)}
+                >
+                  <Trash2 className="size-3.5 text-destructive" />
+                  <span className="sr-only">{tc("actions.delete")}</span>
+                </Button>
+              </>
+            )}
+          </div>
+        )
+      },
     },
   ]
 }
@@ -152,6 +172,10 @@ export default function EntityTypes() {
   const navigate = useNavigate()
   const { data, isLoading } = useEntityTypes()
   const deleteMutation = useDeleteEntityType()
+  const { identity } = useAuth()
+  const isPlatformAdmin = identity?.systemId == null
+  const { t } = useTranslation("entityTypes")
+  const { t: tc } = useTranslation()
 
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all")
   const [deleteTarget, setDeleteTarget] = useState<EntityTypeDefinition | undefined>()
@@ -164,7 +188,12 @@ export default function EntityTypes() {
 
   const columns = buildColumns(
     (etd) => navigate(`/entity-types/${etd.id}/edit`),
-    setDeleteTarget
+    setDeleteTarget,
+    // System-scoped admins may mutate only system-scoped entity types.
+    // Global definitions cross tenant boundaries and are platform-admin only.
+    (etd) => isPlatformAdmin || etd.scope !== "global",
+    t,
+    tc,
   )
 
   return (
@@ -173,15 +202,15 @@ export default function EntityTypes() {
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Entity Types
+            {t("title")}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Schema registry — define and manage entity type definitions
+            {t("subtitle")}
           </p>
         </div>
         <Button onClick={() => navigate("/entity-types/new")}>
           <Plus className="mr-1.5 size-4" />
-          New Entity Type
+          {t("new")}
         </Button>
       </div>
 
@@ -201,16 +230,16 @@ export default function EntityTypes() {
         columns={columns}
         data={filtered}
         isLoading={isLoading}
-        emptyMessage="No entity types found."
+        emptyMessage={t("empty")}
       />
 
       {/* Delete confirmation */}
       <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(o) => !o && setDeleteTarget(undefined)}
-        title={`Delete "${deleteTarget?.type_name}"?`}
-        description="This will permanently delete the entity type definition. Entities of this type must be removed first."
-        confirmLabel="Delete"
+        title={t("delete.title", { name: deleteTarget?.type_name })}
+        description={t("delete.description")}
+        confirmLabel={t("delete.confirm")}
         isLoading={deleteMutation.isPending}
         onConfirm={async () => {
           if (deleteTarget) {

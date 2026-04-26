@@ -1,0 +1,19 @@
+{
+  "title": "Dashboard",
+  "subtitle": "Visão geral do Open Authoritative Directory",
+  "keyMetrics": "Métricas Principais",
+  "metrics": {
+    "totalEntities": "Total de Entidades",
+    "activeSystems": "Sistemas Ativos",
+    "subscribedWebhooks": "Webhooks Registrados"
+  },
+  "health": {
+    "title": "Saúde do Sistema",
+    "checking": "Verificando…",
+    "healthy": "Saudável",
+    "degraded": "Degradado",
+    "apiServer": "Servidor de API",
+    "database": "Banco de Dados",
+    "ok": "Todos os sistemas operacionais"
+  }
+}

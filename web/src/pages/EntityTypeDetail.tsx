@@ -7,6 +7,7 @@ import { http } from "@/lib/http-client"
 import type { HttpError } from "@/lib/http-client"
 import { toastSuccess, toastApiError } from "@/lib/toast"
 import type { EntityTypeDefinition, ListResponse } from "@/lib/types"
+import { useAuth } from "@/contexts/AuthContext"
 import { FadeContent } from "@/components/reactbits"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -45,6 +46,9 @@ export default function EntityTypeDetail() {
   const queryClient = useQueryClient()
 
   const { data: etd, isLoading, isError } = useEntityType(id!)
+  const { identity } = useAuth()
+  const isPlatformAdmin = identity?.systemId == null
+  const canMutate = !!etd && (isPlatformAdmin || etd.scope !== "global")
   const { data: usageData, isLoading: usageLoading } = useEntityUsageCount(
     etd?.type_name
   )
@@ -112,24 +116,26 @@ export default function EntityTypeDetail() {
             {new Date(etd.updated_at).toLocaleString()}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate(`/entity-types/${id}/edit`)}
-          >
-            <Pencil className="mr-1.5 size-3.5" />
-            Edit
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setDeleteOpen(true)}
-          >
-            <Trash2 className="mr-1.5 size-3.5 text-destructive" />
-            Delete
-          </Button>
-        </div>
+        {canMutate && (
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/entity-types/${id}/edit`)}
+            >
+              <Pencil className="mr-1.5 size-3.5" />
+              Edit
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteOpen(true)}
+            >
+              <Trash2 className="mr-1.5 size-3.5 text-destructive" />
+              Delete
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Usage card */}

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Search, Layers, Plus, Pencil, Trash2, X } from "lucide-react"
 
@@ -264,9 +264,13 @@ function OverlayFormModal({
   const overlaySchema = schemasData?.items.find(
     (s) => s.entity_type_id === entity.type_id
   )
-  const parsedSchema = overlaySchema
-    ? parseSchema(overlaySchema.allowed_overlay_properties)
-    : null
+  const parsedSchema = useMemo(
+    () =>
+      overlaySchema
+        ? parseSchema(overlaySchema.allowed_overlay_properties)
+        : null,
+    [overlaySchema]
+  )
 
   const [values, setValues] = useState<Record<string, unknown>>(
     existing?.properties ?? {}
@@ -279,8 +283,8 @@ function OverlayFormModal({
 
   // Sync rawMode when schema loads
   useEffect(() => {
-    if (!rawMode && !parsedSchema) setRawMode(true)
-  }, [parsedSchema, rawMode])
+    if (!parsedSchema) setRawMode(true)
+  }, [parsedSchema])
 
   // Reset state when modal opens/closes
   useEffect(() => {

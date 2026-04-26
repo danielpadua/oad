@@ -38,6 +38,8 @@ export interface DataTableProps<TData> {
   onColumnVisibilityChange?: (visibility: VisibilityState) => void
   emptyMessage?: string
   className?: string
+  /** Accessible label for the table element (used by screen readers). */
+  label?: string
 }
 
 function DataTableColumnHeader({
@@ -54,6 +56,7 @@ function DataTableColumnHeader({
   }
 
   const sorted = column.getIsSorted()
+  const ariaSort = sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : "none"
 
   return (
     <button
@@ -62,14 +65,16 @@ function DataTableColumnHeader({
         className
       )}
       onClick={() => column.toggleSorting(sorted === "asc")}
+      aria-sort={ariaSort}
+      aria-label={`${title}, sorted ${ariaSort === "none" ? "— click to sort" : ariaSort}`}
     >
       {title}
       {sorted === "asc" ? (
-        <ChevronUp className="size-3.5 text-foreground" />
+        <ChevronUp className="size-3.5 text-foreground" aria-hidden />
       ) : sorted === "desc" ? (
-        <ChevronDown className="size-3.5 text-foreground" />
+        <ChevronDown className="size-3.5 text-foreground" aria-hidden />
       ) : (
-        <ChevronsUpDown className="size-3.5 opacity-40 group-hover/header:opacity-100" />
+        <ChevronsUpDown className="size-3.5 opacity-40 group-hover/header:opacity-100" aria-hidden />
       )}
     </button>
   )
@@ -94,8 +99,8 @@ function DataTablePagination({
   const end = Math.min((pageIndex + 1) * pageSize, rowCount)
 
   return (
-    <div className="flex items-center justify-between px-1 py-2">
-      <p className="text-muted-foreground text-sm">
+    <nav aria-label="Table pagination" className="flex items-center justify-between px-1 py-2">
+      <p className="text-muted-foreground text-sm" aria-live="polite" aria-atomic>
         {rowCount === 0
           ? "No results"
           : `${start}–${end} of ${rowCount}`}
@@ -106,6 +111,7 @@ function DataTablePagination({
           size="sm"
           onClick={() => onPaginationChange({ pageIndex: 0, pageSize })}
           disabled={!canPrev}
+          aria-label="Go to first page"
         >
           «
         </Button>
@@ -114,10 +120,11 @@ function DataTablePagination({
           size="sm"
           onClick={() => onPaginationChange({ pageIndex: pageIndex - 1, pageSize })}
           disabled={!canPrev}
+          aria-label="Go to previous page"
         >
           ‹
         </Button>
-        <span className="text-muted-foreground text-sm tabular-nums">
+        <span className="text-muted-foreground text-sm tabular-nums" aria-current="page">
           {pageIndex + 1} / {Math.max(pageCount, 1)}
         </span>
         <Button
@@ -125,6 +132,7 @@ function DataTablePagination({
           size="sm"
           onClick={() => onPaginationChange({ pageIndex: pageIndex + 1, pageSize })}
           disabled={!canNext}
+          aria-label="Go to next page"
         >
           ›
         </Button>
@@ -133,11 +141,12 @@ function DataTablePagination({
           size="sm"
           onClick={() => onPaginationChange({ pageIndex: pageCount - 1, pageSize })}
           disabled={!canNext}
+          aria-label="Go to last page"
         >
           »
         </Button>
       </div>
-    </div>
+    </nav>
   )
 }
 
@@ -154,6 +163,7 @@ function DataTable<TData>({
   onColumnVisibilityChange,
   emptyMessage = "No results.",
   className,
+  label,
 }: DataTableProps<TData>) {
   const table = useReactTable({
     data,
@@ -197,8 +207,9 @@ function DataTable<TData>({
 
   return (
     <div className={cn("w-full space-y-2", className)}>
-      <div className="rounded-lg border border-border overflow-hidden">
-        <Table>
+      <div className="overflow-hidden rounded-lg border border-border">
+        <div className="overflow-x-auto">
+        <Table aria-label={label} aria-busy={isLoading}>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
@@ -245,6 +256,7 @@ function DataTable<TData>({
             )}
           </TableBody>
         </Table>
+        </div>
       </div>
       {pagination && onPaginationChange && (
         <DataTablePagination

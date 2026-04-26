@@ -1,0 +1,64 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "entityTypes": "Entity Types",
+    "entities": "Entities",
+    "systems": "Systems",
+    "overlays": "Overlays",
+    "auditLog": "Audit Log",
+    "webhooks": "Webhooks",
+    "settings": "Settings"
+  },
+  "topbar": {
+    "allSystems": "All Systems",
+    "signOut": "Sign out"
+  },
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "view": "View",
+    "create": "Create",
+    "register": "Register",
+    "confirm": "Confirm",
+    "close": "Close",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "import": "Import"
+  },
+  "status": {
+    "active": "Active",
+    "inactive": "Inactive",
+    "loading": "Loading…",
+    "error": "Something went wrong",
+    "noResults": "No results found",
+    "empty": "No data available"
+  },
+  "pagination": {
+    "of": "of",
+    "previous": "Previous",
+    "next": "Next",
+    "first": "First",
+    "last": "Last"
+  },
+  "scope": {
+    "global": "Global",
+    "system_scoped": "System-Scoped",
+    "all": "All"
+  },
+  "roles": {
+    "admin": "Admin",
+    "editor": "Editor",
+    "viewer": "Viewer"
+  },
+  "errors": {
+    "unauthorized": "You are not authorized to perform this action.",
+    "forbidden": "Access denied.",
+    "notFound": "The requested resource was not found.",
+    "serverError": "An unexpected server error occurred.",
+    "networkError": "Unable to reach the server. Check your connection.",
+    "validationError": "Please correct the highlighted fields."
+  }
+}

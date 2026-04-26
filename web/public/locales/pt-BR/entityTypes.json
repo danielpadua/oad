@@ -1,0 +1,34 @@
+{
+  "title": "Tipos de Entidade",
+  "subtitle": "Registro de esquemas — defina e gerencie definições de tipos de entidade",
+  "new": "Novo Tipo de Entidade",
+  "empty": "Nenhum tipo de entidade encontrado.",
+  "columns": {
+    "typeName": "Nome do Tipo",
+    "scope": "Escopo",
+    "created": "Criado em",
+    "actions": "Ações"
+  },
+  "delete": {
+    "title": "Excluir \"{{name}}\"?",
+    "description": "Esta ação excluirá permanentemente a definição do tipo de entidade. As entidades deste tipo devem ser removidas primeiro.",
+    "confirm": "Excluir"
+  },
+  "form": {
+    "create": {
+      "title": "Novo Tipo de Entidade",
+      "description": "Defina um novo esquema de tipo de entidade para o diretório."
+    },
+    "edit": {
+      "title": "Editar Tipo de Entidade",
+      "description": "Atualize a definição do tipo de entidade."
+    },
+    "fields": {
+      "typeName": "Nome do Tipo",
+      "typeNamePlaceholder": "ex: user, resource, role",
+      "scope": "Escopo",
+      "allowedProperties": "Propriedades Permitidas (JSON Schema)",
+      "allowedRelations": "Relações Permitidas"
+    }
+  }
+}

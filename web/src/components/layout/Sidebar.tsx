@@ -9,29 +9,30 @@ import {
   ScrollText,
   Settings,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Dock } from "@/components/reactbits";
 import { cn } from "@/lib/utils";
 
-interface NavItem {
-  to: string;
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
+interface SidebarProps {
+  onNavigate?: () => void;
 }
 
-const navItems: NavItem[] = [
-  { to: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/entity-types", icon: FolderTree, label: "Entity Types" },
-  { to: "/systems", icon: Network, label: "Systems" },
-  { to: "/entities", icon: Users, label: "Entities" },
-  { to: "/overlays", icon: Layers, label: "Overlays" },
-  { to: "/webhooks", icon: Webhook, label: "Webhooks" },
-  { to: "/audit", icon: ScrollText, label: "Audit Log" },
-  { to: "/settings", icon: Settings, label: "Settings" },
-];
+export function Sidebar({ onNavigate }: SidebarProps) {
+  const { t } = useTranslation();
 
-export function Sidebar() {
+  const navItems = [
+    { to: "/", icon: LayoutDashboard, label: t("nav.dashboard") },
+    { to: "/entity-types", icon: FolderTree, label: t("nav.entityTypes") },
+    { to: "/systems", icon: Network, label: t("nav.systems") },
+    { to: "/entities", icon: Users, label: t("nav.entities") },
+    { to: "/overlays", icon: Layers, label: t("nav.overlays") },
+    { to: "/webhooks", icon: Webhook, label: t("nav.webhooks") },
+    { to: "/audit", icon: ScrollText, label: t("nav.auditLog") },
+    { to: "/settings", icon: Settings, label: t("nav.settings") },
+  ];
+
   return (
-    <aside className="flex w-16 flex-col items-center border-r border-border bg-card py-4">
+    <aside className="flex w-16 flex-col items-center border-r border-border bg-card py-4 sm:w-16">
       <Dock orientation="vertical" magnification={52} distance={100} className="gap-1">
         {navItems.map((item) => (
           <NavLink
@@ -39,11 +40,12 @@ export function Sidebar() {
             to={item.to}
             end={item.to === "/"}
             title={item.label}
+            onClick={onNavigate}
             className={({ isActive }) =>
               cn(
                 "flex h-full w-full items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
                 isActive &&
-                  "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
+                  "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
               )
             }
           >
