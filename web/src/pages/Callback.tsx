@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { userManager } from "@/lib/oidc";
+import { getUserManager } from "@/lib/oidc";
 
 export default function Callback() {
   const navigate = useNavigate();
@@ -11,7 +11,7 @@ export default function Callback() {
     if (handled.current) return;
     handled.current = true;
 
-    userManager
+    getUserManager()
       .signinRedirectCallback()
       .then((user) => {
         const state = user.state as { returnTo?: string } | undefined;

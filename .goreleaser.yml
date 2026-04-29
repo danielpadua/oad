@@ -1,0 +1,201 @@
+# GoReleaser configuration for OAD.
+# Reference: https://goreleaser.com
+version: 2
+
+project_name: oad
+
+before:
+  hooks:
+    - go mod tidy
+    # Build the embedded Management UI; required by //go:embed in internal/webui.
+    - sh -c "cd web && npm ci --no-audit --no-fund && npm run build"
+
+builds:
+  - id: oad
+    main: ./cmd/oad
+    binary: oad
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/danielpadua/oad/cmd/oad/cmd.version={{.Version}}
+      - -X github.com/danielpadua/oad/cmd/oad/cmd.commit={{.ShortCommit}}
+      - -X github.com/danielpadua/oad/cmd/oad/cmd.buildDate={{.Date}}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: default
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: github
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))?!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))?!?:.+$'
+      order: 1
+    - title: Performance
+      regexp: '^.*?perf(\(.+\))?!?:.+$'
+      order: 2
+    - title: Refactoring
+      regexp: '^.*?refactor(\(.+\))?!?:.+$'
+      order: 3
+    - title: Other
+      order: 999
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^style:"
+      - "^ci:"
+      - "Merge pull request"
+      - "Merge branch"
+
+# -----------------------------------------------------------------------------
+# Software Bill of Materials — generated per-archive by syft.
+# -----------------------------------------------------------------------------
+sboms:
+  - id: archive
+    artifacts: archive
+
+# -----------------------------------------------------------------------------
+# Cosign keyless signing for release artifacts (binaries, archives, checksums).
+# Verification:
+#   cosign verify-blob \
+#     --certificate-identity-regexp "https://github.com/danielpadua/oad/.+" \
+#     --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+#     --certificate <file>.pem --signature <file>.sig <file>
+# -----------------------------------------------------------------------------
+signs:
+  - id: cosign-keyless
+    cmd: cosign
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-signature=${signature}"
+      - "--output-certificate=${certificate}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+# -----------------------------------------------------------------------------
+# Container images — published to GHCR.
+# Multi-arch images are assembled via docker_manifests below.
+# -----------------------------------------------------------------------------
+dockers:
+  - id: linux-amd64
+    image_templates:
+      - "ghcr.io/danielpadua/oad:{{ .Version }}-amd64"
+    use: buildx
+    goos: linux
+    goarch: amd64
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--target=release"
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=Open Authoritative Directory — Policy Information Point"
+      - "--label=org.opencontainers.image.url=https://github.com/danielpadua/oad"
+      - "--label=org.opencontainers.image.source=https://github.com/danielpadua/oad"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
+
+  - id: linux-arm64
+    image_templates:
+      - "ghcr.io/danielpadua/oad:{{ .Version }}-arm64"
+    use: buildx
+    goos: linux
+    goarch: arm64
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--target=release"
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=Open Authoritative Directory — Policy Information Point"
+      - "--label=org.opencontainers.image.url=https://github.com/danielpadua/oad"
+      - "--label=org.opencontainers.image.source=https://github.com/danielpadua/oad"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
+
+docker_manifests:
+  - name_template: "ghcr.io/danielpadua/oad:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/danielpadua/oad:{{ .Version }}-amd64"
+      - "ghcr.io/danielpadua/oad:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/danielpadua/oad:latest"
+    image_templates:
+      - "ghcr.io/danielpadua/oad:{{ .Version }}-amd64"
+      - "ghcr.io/danielpadua/oad:{{ .Version }}-arm64"
+
+# -----------------------------------------------------------------------------
+# Cosign keyless signing for the multi-arch image manifests.
+# Verification:
+#   cosign verify ghcr.io/danielpadua/oad:<tag> \
+#     --certificate-identity-regexp "https://github.com/danielpadua/oad/.+" \
+#     --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+# -----------------------------------------------------------------------------
+docker_signs:
+  - cmd: cosign
+    args:
+      - sign
+      - "${artifact}@${digest}"
+      - "--yes"
+    artifacts: manifests
+    output: true
+
+release:
+  github:
+    owner: danielpadua
+    name: oad
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## OAD {{ .Tag }}
+
+    Verify download integrity:
+
+    ```bash
+    sha256sum -c checksums.txt
+    ```
+
+    Verify the checksums file signature (cosign keyless):
+
+    ```bash
+    cosign verify-blob \
+      --certificate-identity-regexp "https://github.com/danielpadua/oad/.+" \
+      --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+      --certificate checksums.txt.pem \
+      --signature checksums.txt.sig \
+      checksums.txt
+    ```

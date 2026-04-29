@@ -17,7 +17,16 @@ export default defineConfig({
         target: "http://localhost:8080",
         changeOrigin: true,
       },
+      "/config.json": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+      },
     },
+  },
+  build: {
+    // Output goes directly into the Go embed directory so `go build` picks it up.
+    outDir: "../internal/webui/dist",
+    emptyOutDir: true,
   },
   test: {
     environment: "jsdom",

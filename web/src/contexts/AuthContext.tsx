@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { User } from "oidc-client-ts";
-import { userManager } from "@/lib/oidc";
+import { getUserManager, setActiveProviderName } from "@/lib/oidc";
 import { setTokenGetter, setUnauthorizedHandler } from "@/lib/http-client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -19,7 +19,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   identity: AuthIdentity | null;
-  login: (returnTo?: string) => Promise<void>;
+  login: (returnTo?: string, providerName?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -52,14 +52,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Redirect to /login on 401 — clears OIDC session before redirecting.
   useEffect(() => {
     setUnauthorizedHandler(() => {
-      userManager.removeUser().catch(() => {});
+      getUserManager().removeUser().catch(() => {});
       window.location.replace("/login");
     });
   }, []);
 
   // Load user from sessionStorage on mount, then subscribe to OIDC events.
   useEffect(() => {
-    userManager
+    getUserManager()
       .getUser()
       .then((u) => setUser(u && !u.expired ? u : null))
       .catch(() => setUser(null))
@@ -76,27 +76,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.location.replace("/login");
     };
 
-    userManager.events.addUserLoaded(onUserLoaded);
-    userManager.events.addUserUnloaded(onUserUnloaded);
-    userManager.events.addAccessTokenExpired(onTokenExpired);
-    userManager.events.addSilentRenewError(onSilentRenewError);
+    getUserManager().events.addUserLoaded(onUserLoaded);
+    getUserManager().events.addUserUnloaded(onUserUnloaded);
+    getUserManager().events.addAccessTokenExpired(onTokenExpired);
+    getUserManager().events.addSilentRenewError(onSilentRenewError);
 
     return () => {
-      userManager.events.removeUserLoaded(onUserLoaded);
-      userManager.events.removeUserUnloaded(onUserUnloaded);
-      userManager.events.removeAccessTokenExpired(onTokenExpired);
-      userManager.events.removeSilentRenewError(onSilentRenewError);
+      getUserManager().events.removeUserLoaded(onUserLoaded);
+      getUserManager().events.removeUserUnloaded(onUserUnloaded);
+      getUserManager().events.removeAccessTokenExpired(onTokenExpired);
+      getUserManager().events.removeSilentRenewError(onSilentRenewError);
     };
   }, []);
 
-  const login = async (returnTo?: string) => {
-    await userManager.signinRedirect({
+  const login = async (returnTo?: string, providerName?: string) => {
+    if (providerName) setActiveProviderName(providerName);
+    await getUserManager().signinRedirect({
       state: returnTo ? { returnTo } : undefined,
     });
   };
 
   const logout = async () => {
-    await userManager.signoutRedirect();
+    await getUserManager().signoutRedirect();
   };
 
   return (

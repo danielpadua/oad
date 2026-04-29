@@ -4,45 +4,54 @@
 # Configuration
 # ──────────────────────────────────────────────────────────────────────────────
 BINARY         := bin/oad
-GO_BUILD_FLAGS := -ldflags="-w -s"
+VERSION        := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT         := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_DATE     := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LD_FLAGS       := -w -s \
+                  -X github.com/danielpadua/oad/cmd/oad/cmd.version=$(VERSION) \
+                  -X github.com/danielpadua/oad/cmd/oad/cmd.commit=$(COMMIT) \
+                  -X github.com/danielpadua/oad/cmd/oad/cmd.buildDate=$(BUILD_DATE)
+GO_BUILD_FLAGS := -ldflags="$(LD_FLAGS)"
 DATABASE_URL   ?= postgresql://oad:oad@localhost:5432/oad?sslmode=disable
 
-.PHONY: build dev dev-db dev-token test test-cover lint setup clean \
+.PHONY: build web-build dev test test-cover lint setup clean \
         migrate-up migrate-down migrate-status \
-        docker-build ui-build ui-dev ui-install
+        docker-build ui-dev ui-install format format-check pre-commit help
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Build
 # ──────────────────────────────────────────────────────────────────────────────
 
-## build: Compile the API binary to ./bin/oad
-build:
+## web-build: Build the Management UI (output: internal/webui/dist/)
+web-build:
+	cd web && npm run build
+
+## build: Build the Management UI then compile the OAD binary to ./bin/oad
+build: web-build
 	@mkdir -p bin
-	go build $(GO_BUILD_FLAGS) -o $(BINARY) ./cmd/api
+	go build $(GO_BUILD_FLAGS) -o $(BINARY) ./cmd/oad
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Development
 # ──────────────────────────────────────────────────────────────────────────────
 
-## dev: Start the full stack (API + PostgreSQL) with docker compose
+## dev: Start a development stack. Usage: make dev STACK=multi-idp|single-idp
+##   - multi-idp:  API + Keycloak + Dex + glauth + PostgreSQL
+##   - single-idp: API + Keycloak + PostgreSQL
+STACK ?=
+DEV_STACKS := multi-idp single-idp
 dev:
-	docker compose up --build
+	@if [ -z "$(STACK)" ]; then \
+		echo "ERROR: STACK is required. Usage: make dev STACK=<name>"; \
+		echo "Available stacks: $(DEV_STACKS)"; \
+		exit 2; \
+	fi
+	@if [ ! -f "deployments/$(STACK)/docker-compose.yml" ]; then \
+		echo "ERROR: unknown stack '$(STACK)'. Available: $(DEV_STACKS)"; \
+		exit 2; \
+	fi
+	docker compose -f deployments/$(STACK)/docker-compose.yml up --build
 
-## dev-db: Start only the PostgreSQL container
-dev-db:
-	docker compose up postgres
-
-# Token defaults (overridable: make dev-token SUB=alice ROLES='["viewer"]')
-SUB       ?= admin@example.com
-ROLES     ?= ["admin","editor"]
-SYSTEM_ID ?= 550e8400-e29b-41d4-a716-446655440000
-
-## dev-token: Mint a JWT from the stub JWKS server (requires jwks-stub running)
-dev-token:
-	@curl -s -X POST http://localhost:9090/token \
-		-H 'Content-Type: application/json' \
-		-d '{"sub":"$(SUB)","oad_roles":$(ROLES),"oad_system_id":"$(SYSTEM_ID)"}' \
-		| python3 -m json.tool
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Testing
@@ -141,10 +150,6 @@ ui-install:
 ## ui-dev: Start the Vite dev server for the Management UI (requires API running)
 ui-dev:
 	cd web && npm run dev
-
-## ui-build: Build the Management UI for production
-ui-build:
-	cd web && npm run build
 
 ## help: Show this help message
 help:

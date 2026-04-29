@@ -1,25 +1,21 @@
+// Package config loads and validates OAD runtime configuration.
+// Precedence (highest to lowest): CLI flag → OAD_* env var → YAML file → default.
 package config
 
-import (
-	"fmt"
-	"os"
-	"strconv"
-	"strings"
-	"time"
-)
+import "time"
 
-// Config holds all runtime configuration loaded from environment variables.
-// No defaults contain secrets — all sensitive values are required explicitly.
+// Config holds the fully-resolved runtime configuration.
 type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
 	Auth     AuthConfig
+	WebUI    WebUIConfig
+	Log      LogConfig
 }
 
 type ServerConfig struct {
-	Host            string
-	Port            int
-	ShutdownTimeout time.Duration
+	Addr            string        // [host]:port — default ":8080"
+	ShutdownTimeout time.Duration // default 30s
 }
 
 type DatabaseConfig struct {
@@ -28,106 +24,79 @@ type DatabaseConfig struct {
 	MinConns int32
 }
 
-// AuthConfig controls how the API authenticates incoming requests.
-// Mode selects which credential types are accepted: "jwt", "mtls", or "both".
+// AuthConfig controls authentication for incoming requests.
+// Mode selects accepted credential types: "jwt", "mtls", "both", or "none".
+// Providers defines the set of trusted Identity Providers (for jwt / both modes).
 type AuthConfig struct {
-	Mode        string   // AUTH_MODE: "jwt" (default), "mtls", or "both"
-	JWKSURLs    []string // JWKS_URL: required when mode includes jwt (comma-separated)
-	JWTAudience string   // JWT_AUDIENCE: expected "aud" claim
-	JWTIssuers  []string // JWT_ISSUER: expected "iss" claim (comma-separated)
-	MTLSHeader  string   // MTLS_HEADER: header name for LB-terminated mTLS (default: X-Client-Cert)
+	Mode       string
+	MTLSHeader string
+	Providers  []ProviderConfig
 }
 
-// Load reads configuration from environment variables.
-// Returns an error if any required variable is missing or invalid.
-func Load() (*Config, error) {
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		return nil, fmt.Errorf("DATABASE_URL is required")
-	}
-
-	authMode := getEnvStr("AUTH_MODE", "jwt")
-
-	authCfg := AuthConfig{
-		Mode:        authMode,
-		JWKSURLs:    getEnvStrSlice("JWKS_URL"),
-		JWTAudience: os.Getenv("JWT_AUDIENCE"),
-		JWTIssuers:  getEnvStrSlice("JWT_ISSUER"),
-		MTLSHeader:  getEnvStr("MTLS_HEADER", "X-Client-Cert"),
-	}
-
-	if authMode == "jwt" || authMode == "both" {
-		if len(authCfg.JWKSURLs) == 0 {
-			return nil, fmt.Errorf("JWKS_URL is required when AUTH_MODE is %q", authMode)
-		}
-		if authCfg.JWTAudience == "" {
-			return nil, fmt.Errorf("JWT_AUDIENCE is required when AUTH_MODE is %q", authMode)
-		}
-		if len(authCfg.JWTIssuers) == 0 {
-			return nil, fmt.Errorf("JWT_ISSUER is required when AUTH_MODE is %q", authMode)
-		}
-	}
-
-	return &Config{
-		Server: ServerConfig{
-			Host:            getEnvStr("SERVER_HOST", "0.0.0.0"),
-			Port:            getEnvInt("SERVER_PORT", 8080),
-			ShutdownTimeout: getEnvDuration("SERVER_SHUTDOWN_TIMEOUT", 30*time.Second),
-		},
-		Database: DatabaseConfig{
-			URL:      dbURL,
-			MaxConns: getEnvInt32("DB_MAX_CONNS", 25),
-			MinConns: getEnvInt32("DB_MIN_CONNS", 5),
-		},
-		Auth: authCfg,
-	}, nil
+// ProviderConfig represents a single trusted Identity Provider.
+// Backend carries the fields used by the API to validate tokens.
+// WebUI carries the fields served to the frontend via /config.json.
+type ProviderConfig struct {
+	Name        string
+	DisplayName string
+	Backend     ProviderBackend
+	WebUI       ProviderWebUI
 }
 
-func getEnvStr(key, defaultVal string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return defaultVal
+type ProviderBackend struct {
+	JWKSURL       string
+	Issuer        string
+	Audience      string
+	ClaimsMapping ClaimsMapping
 }
 
-func getEnvInt(key string, defaultVal int) int {
-	if v := os.Getenv(key); v != "" {
-		if i, err := strconv.Atoi(v); err == nil {
-			return i
-		}
-	}
-	return defaultVal
+// ClaimsMapping adapts an IdP's native token claims to OAD's identity model.
+// Leave fields empty to use OAD's defaults (oad_roles, oad_system_id).
+type ClaimsMapping struct {
+	// RolesClaim is the JWT claim that carries the user's roles.
+	// Defaults to "oad_roles" when empty.
+	RolesClaim string
+	// SystemIDClaim is the JWT claim for the scoped system UUID.
+	// Defaults to "oad_system_id" when empty.
+	SystemIDClaim string
+	// DefaultRoles are assigned when RolesClaim is absent from the token.
+	// Useful for IdPs that don't emit per-user role claims (e.g. Dex with
+	// staticPasswords, which doesn't support a groups claim).
+	DefaultRoles []string
 }
 
-func getEnvInt32(key string, defaultVal int32) int32 {
-	if v := os.Getenv(key); v != "" {
-		if i, err := strconv.ParseInt(v, 10, 32); err == nil {
-			return int32(i)
-		}
-	}
-	return defaultVal
+type ProviderWebUI struct {
+	Authority string
+	ClientID  string
+	Scope     string
 }
 
-func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
-	if v := os.Getenv(key); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			return d
-		}
-	}
-	return defaultVal
+// WebUIConfig holds configuration served to the frontend at /config.json.
+// redirect_uri and post_logout_uri are per-application, shared across providers.
+type WebUIConfig struct {
+	RedirectURI   string
+	PostLogoutURI string
 }
 
-func getEnvStrSlice(key string) []string {
-	v := os.Getenv(key)
-	if v == "" {
-		return nil
-	}
-	parts := strings.Split(v, ",")
-	var result []string
-	for _, p := range parts {
-		if t := strings.TrimSpace(p); t != "" {
-			result = append(result, t)
-		}
-	}
-	return result
+type LogConfig struct {
+	Level  string // debug | info | warn | error  — default "info"
+	Format string // json | text                   — default "json"
+}
+
+// CLIOptions carries values supplied via cobra flags.
+// An empty string means "not set by the caller"; the loader skips it.
+type CLIOptions struct {
+	ConfigFile      string
+	Database        string
+	Addr            string
+	AuthMode        string
+	ShutdownTimeout string
+	LogLevel        string
+	LogFormat       string
+}
+
+// Load resolves configuration by merging CLI flags, OAD_* env vars,
+// an optional YAML file, and built-in defaults.
+func Load(opts CLIOptions) (*Config, error) {
+	return load(opts)
 }

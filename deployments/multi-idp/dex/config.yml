@@ -1,0 +1,63 @@
+# Dex configuration for the OAD full-stack dev environment.
+# Demonstrates multi-IdP support alongside Keycloak.
+#
+# Uses the LDAP connector backed by glauth so each user has a distinct group
+# (admin, editor, viewer) that Dex emits as the `groups` claim. OAD maps
+# `groups` → roles via claims_mapping.roles_claim in this stack's config.yml.
+
+issuer: http://localhost:5556
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+  allowedOrigins:
+    - http://localhost:8080
+
+oauth2:
+  skipApprovalScreen: true
+  responseTypes:
+    - code
+
+connectors:
+  - type: ldap
+    id: ldap
+    name: LDAP
+    config:
+      host: glauth:3893
+      insecureNoSSL: true
+
+      # Service account for directory search (defined in glauth/config.cfg).
+      bindDN: cn=svc,dc=oad,dc=dev
+      bindPW: svcpassword
+
+      usernamePrompt: Email
+
+      userSearch:
+        baseDN: dc=oad,dc=dev
+        filter: "(objectClass=posixAccount)"
+        # Login field shown to the user — matches against the `mail` attribute.
+        username: mail
+        idAttr: dn
+        emailAttr: mail
+        nameAttr: cn
+
+      groupSearch:
+        baseDN: dc=oad,dc=dev
+        filter: "(objectClass=posixGroup)"
+        # glauth populates gidNumber on both user and group entries.
+        # Match the user's gidNumber (= primarygroup) against the group's gidNumber.
+        userAttr: gidNumber
+        groupAttr: gidNumber
+        # glauth uses `ou` (not `cn`) as the group's name attribute — its
+        # `groupformat = "ou"` setting publishes groups at ou=<name>,...
+        nameAttr: ou
+
+staticClients:
+  - id: oad-web-dex
+    name: OAD Management UI (Dex)
+    # public: true enables PKCE without a client secret.
+    public: true
+    redirectURIs:
+      - http://localhost:8080/callback

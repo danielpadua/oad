@@ -7,7 +7,8 @@ import { makeIdentity, makeQueryClient, renderWithProviders } from "@/test/utils
 
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: vi.fn() }));
 vi.mock("@/lib/oidc", () => ({
-  userManager: { settings: { authority: "http://localhost", client_id: "test" } },
+  getUserManager: () => ({ settings: { authority: "http://localhost", client_id: "test" } }),
+  initUserManager: vi.fn(),
 }));
 
 import { useAuth } from "@/contexts/AuthContext";

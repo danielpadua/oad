@@ -6,15 +6,9 @@ const urlOrEmpty = z.string().refine(
 );
 
 const envSchema = z.object({
-  // Empty string means "use relative paths" — nginx proxies /api to the backend.
+  // Empty string means "use relative paths" — the API and frontend share the same origin.
+  // Override with an absolute URL when running the Vite dev server against a separate API.
   VITE_API_BASE_URL: urlOrEmpty.default(""),
-
-  // OIDC vars are optional in Phase 7.1 (auth is wired up in Phase 7.2).
-  VITE_OIDC_AUTHORITY: z.string().default(""),
-  VITE_OIDC_CLIENT_ID: z.string().default(""),
-  VITE_OIDC_REDIRECT_URI: z.string().default(""),
-  VITE_OIDC_POST_LOGOUT_URI: z.string().default(""),
-  VITE_OIDC_SCOPE: z.string().default("openid profile email"),
 });
 
 type Env = z.infer<typeof envSchema>;
@@ -22,11 +16,6 @@ type Env = z.infer<typeof envSchema>;
 function loadEnv(): Env {
   const raw = {
     VITE_API_BASE_URL: import.meta.env["VITE_API_BASE_URL"],
-    VITE_OIDC_AUTHORITY: import.meta.env["VITE_OIDC_AUTHORITY"],
-    VITE_OIDC_CLIENT_ID: import.meta.env["VITE_OIDC_CLIENT_ID"],
-    VITE_OIDC_REDIRECT_URI: import.meta.env["VITE_OIDC_REDIRECT_URI"],
-    VITE_OIDC_POST_LOGOUT_URI: import.meta.env["VITE_OIDC_POST_LOGOUT_URI"],
-    VITE_OIDC_SCOPE: import.meta.env["VITE_OIDC_SCOPE"],
   };
 
   const result = envSchema.safeParse(raw);

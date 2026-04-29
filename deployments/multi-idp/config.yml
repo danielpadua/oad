@@ -1,0 +1,50 @@
+# OAD runtime configuration for the multi-idp deployment stack.
+# Mounted read-only into the api container at /etc/oad/config.yml.
+# The api service passes --config /etc/oad/config.yml to the binary.
+
+auth:
+  mode: jwt
+  providers:
+    - name: keycloak
+      display_name: Keycloak
+      backend:
+        # Internal Docker network URL — reachable from the api container.
+        jwks_url: http://keycloak:8080/realms/oad/protocol/openid-connect/certs
+        # Must match the iss claim in tokens; tokens are minted for the
+        # external URL (http://localhost:8081) that the browser uses.
+        issuer: http://localhost:8081/realms/oad
+        audience: oad-api
+        # Keycloak emits native oad_roles and oad_system_id claims via realm
+        # mappers — no claims_mapping override required.
+      webui:
+        # External URL — used by the browser OIDC client.
+        authority: http://localhost:8081/realms/oad
+        client_id: oad-web
+        scope: openid profile email
+
+    - name: dex
+      display_name: Dex
+      backend:
+        # Internal Docker network URL — reachable from the api container.
+        jwks_url: http://dex:5556/keys
+        # Must match the iss claim; Dex mints tokens with the external issuer URL.
+        issuer: http://localhost:5556
+        # Dex sets aud to the requesting client ID (oad-web-dex) for public clients.
+        audience: oad-web-dex
+        claims_mapping:
+          # Dex's LDAP connector (backed by glauth) emits per-user group
+          # membership as the `groups` claim. OAD maps it to roles here.
+          roles_claim: groups
+      webui:
+        # External URL — used by the browser OIDC client.
+        authority: http://localhost:5556
+        client_id: oad-web-dex
+        scope: openid profile email groups
+
+webui:
+  redirect_uri: http://localhost:8080/callback
+  post_logout_uri: http://localhost:8080/
+
+log:
+  level: debug
+  format: text

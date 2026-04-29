@@ -135,11 +135,11 @@
 
 #### Phase 7.9 — Polish & UI Testing
 
-81. [ ] i18n scaffolding (pt-BR / en) with lazy-loaded message bundles
-82. [ ] Responsive pass (tablet and mobile breakpoints for read-only views)
-83. [ ] Accessibility audit (axe-core, keyboard navigation, ARIA on tables/modals)
-84. [ ] Unit tests (Vitest + Testing Library) for hooks, forms, and guards
-85. [ ] Contract tests against mocked API (MSW handlers per endpoint)
+81. [x] i18n scaffolding (pt-BR / en) with lazy-loaded message bundles
+82. [x] Responsive pass (tablet and mobile breakpoints for read-only views)
+83. [x] Accessibility audit (axe-core, keyboard navigation, ARIA on tables/modals)
+84. [x] Unit tests (Vitest + Testing Library) for hooks, forms, and guards
+85. [x] Contract tests against mocked API (MSW handlers per endpoint)
 
 ### Phase 8 — Hardening & Operability
 

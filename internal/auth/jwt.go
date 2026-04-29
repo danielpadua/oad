@@ -11,87 +11,86 @@ import (
 )
 
 type Provider struct {
-	JWKSURL string
-	Issuer  string
+	JWKSURL       string
+	Issuer        string
+	Audience      string
+	ClaimsMapping ClaimsMapping
 }
 
-// JWTAuthenticator validates JWT Bearer tokens using a remote JWKS endpoint.
+// ClaimsMapping adapts an IdP's native token claims to OAD's identity model.
+type ClaimsMapping struct {
+	RolesClaim    string   // defaults to "oad_roles"
+	SystemIDClaim string   // defaults to "oad_system_id"
+	DefaultRoles  []string // used when RolesClaim is absent from the token
+}
+
+// JWTAuthenticator validates JWT Bearer tokens using per-provider JWKS endpoints.
 // It maintains an auto-refreshing key cache so that key rotations at the
 // identity provider are picked up without restarts.
 type JWTAuthenticator struct {
 	cache     *jwk.Cache
-	providers []Provider
-	audience  string
+	providers map[string]Provider // keyed by Issuer
 }
 
-// NewJWTAuthenticator creates a JWT authenticator that fetches signing keys
-// from jwksURL. It performs an initial key fetch to fail fast at startup if
-// the OIDC provider is unreachable.
-func NewJWTAuthenticator(ctx context.Context, jwksURLs []string, audience string, issuers []string) (*JWTAuthenticator, error) {
-	if len(jwksURLs) != len(issuers) {
-		return nil, fmt.Errorf("length of JWKS_URLs (%d) must match length of JWT_ISSUERs (%d)", len(jwksURLs), len(issuers))
+// NewJWTAuthenticator creates a JWT authenticator for one or more trusted
+// identity providers. Each provider carries its own JWKS URL, expected issuer,
+// and expected audience, enabling independent key rotation and audience isolation.
+// It performs an initial key fetch per provider to fail fast at startup if any
+// OIDC provider is unreachable.
+func NewJWTAuthenticator(ctx context.Context, providers []Provider) (*JWTAuthenticator, error) {
+	if len(providers) == 0 {
+		return nil, fmt.Errorf("at least one provider is required")
 	}
 
 	cache := jwk.NewCache(ctx)
-	var providers []Provider
+	byIssuer := make(map[string]Provider, len(providers))
 
-	for i := range jwksURLs {
-		jwksURL := jwksURLs[i]
-		issuer := issuers[i]
-
-		if err := cache.Register(jwksURL, jwk.WithMinRefreshInterval(15*time.Minute)); err != nil {
-			return nil, fmt.Errorf("registering JWKS URL %q: %w", jwksURL, err)
+	for _, p := range providers {
+		if err := cache.Register(p.JWKSURL, jwk.WithMinRefreshInterval(15*time.Minute)); err != nil {
+			return nil, fmt.Errorf("registering JWKS URL %q: %w", p.JWKSURL, err)
 		}
-
-		// Fail fast if unreachable
-		if _, err := cache.Refresh(ctx, jwksURL); err != nil {
-			return nil, fmt.Errorf("initial JWKS fetch from %s: %w", jwksURL, err)
+		if _, err := cache.Refresh(ctx, p.JWKSURL); err != nil {
+			return nil, fmt.Errorf("initial JWKS fetch from %s: %w", p.JWKSURL, err)
 		}
-
-		providers = append(providers, Provider{
-			JWKSURL: jwksURL,
-			Issuer:  issuer,
-		})
+		byIssuer[p.Issuer] = p
 	}
 
 	return &JWTAuthenticator{
 		cache:     cache,
-		providers: providers,
-		audience:  audience,
+		providers: byIssuer,
 	}, nil
 }
 
-// Authenticate parses and validates a raw JWT string. It verifies the
-// signature against the cached JWKS, checks standard claims (exp, iss, aud),
-// and extracts OAD-specific custom claims (oad_roles, oad_system_id).
+// Authenticate parses and validates a raw JWT string. It reads the issuer claim
+// first (without signature verification) to select the correct provider, then
+// verifies the signature and all standard claims (exp, iss, aud) against that
+// provider's JWKS and expected audience. Finally it extracts OAD-specific
+// custom claims (oad_roles, oad_system_id).
 func (a *JWTAuthenticator) Authenticate(ctx context.Context, tokenString string) (*Identity, error) {
-	var lastErr error
-	var token jwt.Token
-
-	for _, p := range a.providers {
-		keySet, err := a.cache.Get(ctx, p.JWKSURL)
-		if err != nil {
-			lastErr = fmt.Errorf("fetching JWKS for %s: %w", p.JWKSURL, err)
-			continue
-		}
-
-		opts := []jwt.ParseOption{
-			jwt.WithKeySet(keySet),
-			jwt.WithValidate(true),
-			jwt.WithIssuer(p.Issuer),
-			jwt.WithAudience(a.audience),
-		}
-
-		t, err := jwt.Parse([]byte(tokenString), opts...)
-		if err == nil {
-			token = t
-			break
-		}
-		lastErr = err
+	// Parse without validation only to read the issuer claim.
+	raw, err := jwt.ParseInsecure([]byte(tokenString))
+	if err != nil {
+		return nil, fmt.Errorf("malformed token: %w", err)
 	}
 
-	if token == nil {
-		return nil, fmt.Errorf("invalid token: %w", lastErr)
+	p, ok := a.providers[raw.Issuer()]
+	if !ok {
+		return nil, fmt.Errorf("untrusted token issuer %q", raw.Issuer())
+	}
+
+	keySet, err := a.cache.Get(ctx, p.JWKSURL)
+	if err != nil {
+		return nil, fmt.Errorf("fetching JWKS for issuer %q: %w", p.Issuer, err)
+	}
+
+	token, err := jwt.Parse([]byte(tokenString),
+		jwt.WithKeySet(keySet),
+		jwt.WithValidate(true),
+		jwt.WithIssuer(p.Issuer),
+		jwt.WithAudience(p.Audience),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("invalid token: %w", err)
 	}
 
 	sub := token.Subject()
@@ -99,12 +98,23 @@ func (a *JWTAuthenticator) Authenticate(ctx context.Context, tokenString string)
 		return nil, errors.New("token missing required 'sub' claim")
 	}
 
-	roles, err := extractStringSlice(token, "oad_roles")
+	rolesClaim := p.ClaimsMapping.RolesClaim
+	if rolesClaim == "" {
+		rolesClaim = "oad_roles"
+	}
+	roles, err := extractStringSlice(token, rolesClaim)
 	if err != nil {
 		return nil, err
 	}
+	if len(roles) == 0 && len(p.ClaimsMapping.DefaultRoles) > 0 {
+		roles = p.ClaimsMapping.DefaultRoles
+	}
 
-	systemID, _ := extractString(token, "oad_system_id")
+	systemIDClaim := p.ClaimsMapping.SystemIDClaim
+	if systemIDClaim == "" {
+		systemIDClaim = "oad_system_id"
+	}
+	systemID, _ := extractString(token, systemIDClaim)
 
 	return &Identity{
 		Subject:  sub,

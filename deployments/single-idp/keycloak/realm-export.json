@@ -1,0 +1,161 @@
+{
+  "realm": "oad",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "oad-web",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://127.0.0.1:5173/*",
+        "*"
+      ],
+      "webOrigins": [
+        "*"
+      ],
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "oad_roles_mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "oad_roles",
+            "claim.name": "oad_roles",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "multivalued": "true"
+          }
+        },
+        {
+          "name": "oad_system_id_mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "oad_system_id",
+            "claim.name": "oad_system_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "audience_mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "oad-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "oad-api",
+      "enabled": true,
+      "bearerOnly": true,
+      "protocol": "openid-connect"
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@oad.local",
+      "firstName": "Admin",
+      "lastName": "User",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "oad_roles": [
+          "admin"
+        ]
+      }
+    },
+    {
+      "username": "product",
+      "email": "product@oad.local",
+      "firstName": "Product",
+      "lastName": "Manager",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "product",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "oad_roles": [
+          "admin",
+          "editor"
+        ],
+        "oad_system_id": [
+          "7b53df37-c05e-4025-8425-850d24c776cf"
+        ]
+      }
+    },
+    {
+      "username": "auditor",
+      "email": "auditor@oad.local",
+      "firstName": "Auditor",
+      "lastName": "User",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "auditor",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "oad_roles": [
+          "auditor"
+        ]
+      }
+    },
+    {
+      "username": "pdp",
+      "email": "pdp@oad.local",
+      "firstName": "PDP",
+      "lastName": "Service",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "pdp",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "oad_roles": [
+          "system"
+        ]
+      }
+    }
+  ]
+}

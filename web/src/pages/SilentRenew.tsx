@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { userManager } from "@/lib/oidc";
+import { signinSilentCallbackAll } from "@/lib/oidc";
 
 /**
  * Lightweight page loaded inside the hidden iframe by oidc-client-ts during
@@ -13,7 +13,7 @@ export default function SilentRenew() {
     if (handled.current) return;
     handled.current = true;
 
-    userManager.signinSilentCallback().catch((err) => {
+    signinSilentCallbackAll().catch((err) => {
       console.error("[OAD] Silent renew callback error:", err);
     });
   }, []);

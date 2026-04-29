@@ -11,6 +11,9 @@ coverage.html
 # Documentation (not needed in runtime image)
 docs/
 
+# Deployment artifacts (compose stacks + IdP fixtures)
+deployments/
+
 # Editor and OS files
 .idea/
 .vscode/

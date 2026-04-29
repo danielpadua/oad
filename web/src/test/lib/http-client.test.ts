@@ -4,9 +4,10 @@ import { server } from "@/test/mocks/server";
 
 // Mock oidc module — prevents UserManager from running in jsdom
 vi.mock("@/lib/oidc", () => ({
-  userManager: {
+  getUserManager: () => ({
     settings: { authority: "http://localhost", client_id: "test-client" },
-  },
+  }),
+  initUserManager: vi.fn(),
 }));
 
 import { http, HttpError, NetworkError, setTokenGetter, setUnauthorizedHandler } from "@/lib/http-client";

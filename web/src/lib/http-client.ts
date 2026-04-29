@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { env } from "./env";
-import { userManager } from "./oidc";
+import { getUserManager } from "./oidc";
 
 /** Shape of error responses returned by the OAD API (apierr package). */
 export interface ApiError {
@@ -54,7 +54,7 @@ export function setTokenGetter(fn: () => string | null): void {
  */
 function readStoredAccessToken(): string | null {
   try {
-    const { authority, client_id } = userManager.settings;
+    const { authority, client_id } = getUserManager().settings;
     const raw = window.localStorage.getItem(`oidc.user:${authority}:${client_id}`);
     if (!raw) return null;
     const data = JSON.parse(raw) as { access_token?: string; expires_at?: number };

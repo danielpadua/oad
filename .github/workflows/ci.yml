@@ -93,7 +93,7 @@ jobs:
           cache: true
 
       - name: Build binary
-        run: go build -ldflags="-w -s" -o bin/oad ./cmd/api
+        run: go build -ldflags="-w -s" -o bin/oad ./cmd/oad
 
   # ---------------------------------------------------------------------------
   # Security: SAST (gosec) + filesystem vulnerability scan (trivy)

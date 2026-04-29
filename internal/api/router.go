@@ -49,6 +49,12 @@ type Dependencies struct {
 
 	// Phase 7 handlers — Dashboard
 	StatsHandler *handler.StatsHandler
+
+	// Frontend bootstrap — OIDC configuration
+	ConfigHandler *handler.ConfigHandler
+
+	// Embedded Management UI — SPA catch-all (nil disables the UI).
+	WebUIHandler http.Handler
 }
 
 // NewRouter constructs the Chi router with all middleware and routes registered.
@@ -80,6 +86,7 @@ func NewRouter(deps Dependencies) http.Handler {
 	// them accessible to load balancers and Prometheus without auth.
 	r.Get("/health", healthHandler.Get)
 	r.Get("/metrics", promhttp.Handler().ServeHTTP)
+	r.Get("/config.json", deps.ConfigHandler.Get)
 
 	// /api/v1 — all domain endpoints require authentication.
 	r.Route("/api/v1", func(r chi.Router) {
@@ -201,6 +208,12 @@ func NewRouter(deps Dependencies) http.Handler {
 			})
 		})
 	})
+
+	// Management UI catch-all — must be last so it never shadows API routes.
+	// Unknown paths fall through to index.html; React Router handles them client-side.
+	if deps.WebUIHandler != nil {
+		r.Handle("/*", deps.WebUIHandler)
+	}
 
 	return r
 }

@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"context"
@@ -10,46 +10,70 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/danielpadua/oad/internal/api"
 	"github.com/danielpadua/oad/internal/api/handler"
-	"github.com/danielpadua/oad/internal/api/middleware"
 	"github.com/danielpadua/oad/internal/audit"
 	"github.com/danielpadua/oad/internal/auth"
 	"github.com/danielpadua/oad/internal/config"
 	"github.com/danielpadua/oad/internal/db"
 	"github.com/danielpadua/oad/internal/entity"
 	"github.com/danielpadua/oad/internal/entitytype"
-	"github.com/danielpadua/oad/internal/logging"
 	"github.com/danielpadua/oad/internal/overlay"
 	"github.com/danielpadua/oad/internal/overlayschema"
 	"github.com/danielpadua/oad/internal/relation"
 	"github.com/danielpadua/oad/internal/retrieval"
 	"github.com/danielpadua/oad/internal/system"
 	"github.com/danielpadua/oad/internal/webhook"
+	"github.com/danielpadua/oad/internal/webui"
 	"github.com/danielpadua/oad/migrations"
 )
 
-func main() {
-	// Initialize structured JSON logger with context-aware enrichment.
-	// The ContextHandler automatically injects correlation_id and actor identity
-	// into every log record from the request context.
-	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	})
-	logger := slog.New(logging.NewContextHandler(jsonHandler,
-		middleware.CorrelationIDExtractor,
-		auth.IdentityExtractor,
-	))
-	slog.SetDefault(logger)
+var (
+	flagDatabase        string
+	flagAddr            string
+	flagAuthMode        string
+	flagShutdownTimeout string
+	flagLogLevel        string
+	flagLogFormat       string
+)
 
-	if err := run(); err != nil {
-		slog.Error("server exited with error", "error", err)
-		os.Exit(1)
-	}
+var runCmd = &cobra.Command{
+	Use:   "run",
+	Short: "Run OAD components",
 }
 
-func run() error {
-	cfg, err := config.Load()
+var serverCmd = &cobra.Command{
+	Use:   "server",
+	Short: "Start the OAD API server",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runServer()
+	},
+}
+
+func init() {
+	serverCmd.Flags().StringVar(&flagDatabase, "database", "", "PostgreSQL DSN (overrides config file and OAD_DATABASE)")
+	serverCmd.Flags().StringVar(&flagAddr, "addr", "", "bind address [host]:port (default :8080)")
+	serverCmd.Flags().StringVar(&flagAuthMode, "auth-mode", "", "jwt | mtls | both | none (default jwt)")
+	serverCmd.Flags().StringVar(&flagShutdownTimeout, "shutdown-timeout", "", "graceful shutdown deadline, e.g. 30s")
+	serverCmd.Flags().StringVar(&flagLogLevel, "log-level", "", "debug | info | warn | error (default info)")
+	serverCmd.Flags().StringVar(&flagLogFormat, "log-format", "", "json | text (default json)")
+
+	runCmd.AddCommand(serverCmd)
+	rootCmd.AddCommand(runCmd)
+}
+
+func runServer() error {
+	cfg, err := config.Load(config.CLIOptions{
+		ConfigFile:      CfgFile,
+		Database:        flagDatabase,
+		Addr:            flagAddr,
+		AuthMode:        flagAuthMode,
+		ShutdownTimeout: flagShutdownTimeout,
+		LogLevel:        flagLogLevel,
+		LogFormat:       flagLogFormat,
+	})
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -70,14 +94,12 @@ func run() error {
 
 	slog.Info("migrations applied successfully")
 
-	// Initialize authenticators based on configured auth mode.
 	var jwtAuth *auth.JWTAuthenticator
 	var mtlsAuth *auth.MTLSAuthenticator
 
 	switch cfg.Auth.Mode {
 	case "jwt", "both":
-		var err error
-		jwtAuth, err = auth.NewJWTAuthenticator(ctx, cfg.Auth.JWKSURLs, cfg.Auth.JWTAudience, cfg.Auth.JWTIssuers)
+		jwtAuth, err = buildJWTAuthenticator(ctx, cfg.Auth.Providers)
 		if err != nil {
 			return fmt.Errorf("initializing JWT authenticator: %w", err)
 		}
@@ -88,7 +110,6 @@ func run() error {
 		mtlsAuth = auth.NewMTLSAuthenticator(cfg.Auth.MTLSHeader)
 	}
 
-	// --- Phase 2: Schema Registry ---
 	auditSvc := audit.NewService()
 
 	entityTypeRepo := entitytype.NewRepository()
@@ -100,22 +121,18 @@ func run() error {
 	overlaySchemaRepo := overlayschema.NewRepository()
 	overlaySchemaSvc := overlayschema.NewService(pool, overlaySchemaRepo, auditSvc)
 
-	// --- Phase 3: Entity & Relation Management ---
 	entityRepo := entity.NewRepository()
 	entitySvc := entity.NewService(pool, entityRepo, auditSvc)
 
 	relationRepo := relation.NewRepository()
 	relationSvc := relation.NewService(pool, relationRepo, auditSvc)
 
-	// --- Phase 4: Overlay System ---
 	overlayRepo := overlay.NewRepository()
 	overlaySvc := overlay.NewService(pool, overlayRepo, auditSvc)
 
-	// --- Phase 5: Retrieval API ---
 	retrievalRepo := retrieval.NewRepository()
 	retrievalSvc := retrieval.NewService(pool, retrievalRepo)
 
-	// --- Phase 6: Webhooks ---
 	webhookRepo := webhook.NewRepository()
 	webhookSvc := webhook.NewService(pool, webhookRepo, auditSvc)
 	webhookDispatcher := webhook.NewDispatcher(pool, webhookRepo, slog.Default())
@@ -141,24 +158,31 @@ func run() error {
 		WebhookHandler: handler.NewWebhookHandler(webhookSvc),
 
 		StatsHandler: handler.NewStatsHandler(pool),
+
+		ConfigHandler: handler.NewConfigHandler(cfg),
+
+		WebUIHandler: func() http.Handler {
+			h, err := webui.NewHandler()
+			if err != nil {
+				slog.Warn("embedded UI unavailable", "err", err)
+				return nil
+			}
+			return h
+		}(),
 	})
 
-	// Start the webhook dispatcher as a background goroutine.
-	// It shares the server's lifecycle: cancellation propagates via ctx.
 	dispatchCtx, cancelDispatch := context.WithCancel(ctx)
 	defer cancelDispatch()
 	go webhookDispatcher.Run(dispatchCtx)
 
 	srv := &http.Server{
-		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
+		Addr:         cfg.Server.Addr,
 		Handler:      router,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// Start the HTTP server in a goroutine so the main goroutine can
-	// block on the OS signal channel below for graceful shutdown.
 	errCh := make(chan error, 1)
 	go func() {
 		slog.Info("server listening", "addr", srv.Addr)
@@ -167,7 +191,6 @@ func run() error {
 		}
 	}()
 
-	// Block until SIGINT / SIGTERM or a fatal server error.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
@@ -190,4 +213,21 @@ func run() error {
 	slog.Info("server stopped")
 
 	return nil
+}
+
+func buildJWTAuthenticator(ctx context.Context, providers []config.ProviderConfig) (*auth.JWTAuthenticator, error) {
+	authProviders := make([]auth.Provider, len(providers))
+	for i, p := range providers {
+		authProviders[i] = auth.Provider{
+			JWKSURL:  p.Backend.JWKSURL,
+			Issuer:   p.Backend.Issuer,
+			Audience: p.Backend.Audience,
+			ClaimsMapping: auth.ClaimsMapping{
+				RolesClaim:    p.Backend.ClaimsMapping.RolesClaim,
+				SystemIDClaim: p.Backend.ClaimsMapping.SystemIDClaim,
+				DefaultRoles:  p.Backend.ClaimsMapping.DefaultRoles,
+			},
+		}
+	}
+	return auth.NewJWTAuthenticator(ctx, authProviders)
 }

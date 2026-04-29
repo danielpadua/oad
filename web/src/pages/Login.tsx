@@ -1,12 +1,17 @@
 import { useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { getProviders } from "@/lib/oidc";
 import { SoftAurora, GradientText, DecryptedText } from "@/components/reactbits";
+
+const btnClass =
+  "w-full cursor-pointer rounded-md bg-primary px-10 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
 
 export default function Login() {
   const { isAuthenticated, isLoading, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const providers = getProviders();
 
   const returnTo = (location.state as { from?: string } | null)?.from ?? "/";
 
@@ -16,8 +21,6 @@ export default function Login() {
       navigate(returnTo, { replace: true });
     }
   }, [isAuthenticated, isLoading, navigate, returnTo]);
-
-  const handleLogin = () => void login(returnTo);
 
   return (
     <div className="relative flex h-screen w-full flex-col items-center justify-center overflow-hidden bg-background">
@@ -46,14 +49,34 @@ export default function Login() {
           Policy Information Point — authenticate to manage attribute assignments and audit access decisions.
         </p>
 
-        {/* Sign-in button */}
-        <button
-          onClick={handleLogin}
-          disabled={isLoading}
-          className="cursor-pointer rounded-md bg-primary px-10 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-        >
-          {isLoading ? "Checking session…" : "Sign in with SSO"}
-        </button>
+        {/* Sign-in — single button or provider picker */}
+        {providers.length > 1 ? (
+          <div className="flex w-64 flex-col items-center gap-3">
+            <p className="text-xs text-muted-foreground">Sign in with</p>
+            {providers.map((p) => (
+              <button
+                key={p.name}
+                onClick={() => void login(returnTo, p.name)}
+                disabled={isLoading}
+                className={btnClass}
+              >
+                {p.display_name}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <button
+            onClick={() => void login(returnTo)}
+            disabled={isLoading}
+            className={btnClass}
+          >
+            {isLoading
+              ? "Checking session…"
+              : providers.length === 1
+                ? `Sign in with ${providers[0].display_name}`
+                : "Sign in with SSO"}
+          </button>
+        )}
       </div>
     </div>
   );

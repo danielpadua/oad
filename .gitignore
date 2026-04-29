@@ -41,6 +41,10 @@ go.work.sum
 web/dist/
 web/node_modules/
 
+# Embedded UI build output — keep only the placeholder index.html
+internal/webui/dist/*
+!internal/webui/dist/index.html
+
 # OS generated files (macOS / Windows)
 .DS_Store
 .DS_Store?

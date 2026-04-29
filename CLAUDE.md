@@ -96,94 +96,186 @@ Components selected from ReactBits for the OAD Management UI, organized by usage
 
 ```
 cmd/
-  api/                     # Application entry point (main.go)
-  devtools/jwks-server/    # Lightweight JWKS stub for local IdP simulation
+  oad/                     # CLI entry point (cobra root + run server sub-command)
 internal/
   api/
-    handler/               # HTTP handlers (health.go; domain handlers Phase 2+)
+    handler/               # HTTP handlers (health, configjson, and all domain handlers)
     middleware/             # Chi middleware: auth, authz, correlation, logging, metrics, recovery
     response/              # JSON response helpers (response.go)
     router.go              # Composition root for all HTTP routes and middleware
   apierr/                  # Structured API error types (map to HTTP status codes)
   audit/                   # Audit log service (writes within the caller's DB transaction)
   auth/                    # Authentication: JWT (JWKS), mTLS, Identity model, context helpers
-  config/                  # Environment-based configuration (config.go)
+  config/                  # Configuration loader: YAML file + OAD_* env vars + CLI flags
   db/                      # PostgreSQL pool, migrations, RLS-scoped transactions (scope.go)
   logging/                 # Context-aware slog handler (auto-injects correlation_id, actor)
   validation/              # JSON Schema compile + validate engine
+  webui/                   # Embedded Management UI SPA handler (//go:embed all:dist)
 migrations/
   000001_initial_schema.*  # Full schema: entity graph, RLS, audit, webhooks
+web/                       # React 19 + Vite Management UI source (built into internal/webui/dist/)
 docs/                      # Design documents: spec, data model, component/sequence diagrams, backlog
+deployments/               # Local development stacks (docker compose + IdP fixtures)
+  multi-idp/               #   API + Keycloak + Dex + glauth + Postgres
+  single-idp/              #   API + Keycloak + Postgres
 ```
 
 # Build and run commands
 
 ```bash
 make setup              # Install git hooks (run once after cloning)
-make build              # Compile API binary to ./bin/oad
-make dev                # docker compose up --build (API + PostgreSQL + JWKS stub)
-make dev-db             # Start only the PostgreSQL container
-make dev-token          # Mint a JWT via the JWKS stub (overridable: SUB, ROLES, SYSTEM_ID)
+make web-build          # Build the Management UI into internal/webui/dist/
+make build              # web-build + compile binary to ./bin/oad
+make dev STACK=<name>   # Start a dev stack (multi-idp | single-idp)
+make dev-db STACK=<name> # Start only the PostgreSQL container of a stack
 make test               # go test -race ./...
 make test-cover         # Tests + HTML coverage report
 make lint               # golangci-lint run ./...
-make migrate-up         # Apply pending migrations (requires DATABASE_URL)
+make migrate-up         # Apply pending migrations (requires OAD_DATABASE)
 make migrate-down       # Roll back last migration
 make docker-build       # Build production Docker image
 ```
 
 # Local development setup
 
-The full local stack is orchestrated via `docker-compose.yml` with three services:
+Each compose stack lives in its own directory under `deployments/`. The Makefile
+selects a stack via the `STACK` variable; the choice is explicit (no default).
 
-| Service      | Image / Build          | Port  | Purpose                                    |
-|--------------|------------------------|-------|--------------------------------------------|
-| `api`        | `Dockerfile`           | 8080  | The OAD API server                         |
-| `jwks-stub`  | `Dockerfile.devtools`  | 9090  | Lightweight IdP stub (JWKS + token minting)|
-| `postgres`   | `postgres:15-alpine`   | 5432  | PostgreSQL database                        |
+## Stacks
 
-The API depends on both `postgres` and `jwks-stub` being healthy before starting. Startup order is enforced via `depends_on` with `condition: service_healthy`.
+### `deployments/multi-idp/` — Keycloak + Dex/glauth + Postgres
 
-## JWKS stub server
+Demonstrates multi-provider validation: two independent IdPs, two JWKS, distinct
+claim mappings, served by the same OAD instance.
 
-A standalone Go server (`cmd/devtools/jwks-server`) that simulates an IdP for local development:
-- Generates an ephemeral RSA keypair at startup (new keys every container restart).
-- `GET /.well-known/jwks.json` — serves the public JWKS.
-- `POST /token` — mints signed JWTs with configurable claims (`sub`, `oad_roles`, `oad_system_id`, `expires_in`).
-- `GET /health` — liveness check.
+| Service    | Image / Build                       | Port | Purpose                            |
+|------------|-------------------------------------|------|------------------------------------|
+| `api`      | `Dockerfile` (repo root)            | 8080 | OAD API + embedded Management UI  |
+| `keycloak` | `quay.io/keycloak/keycloak:24.0.0`  | 8081 | OIDC Identity Provider #1          |
+| `dex`      | `ghcr.io/dexidp/dex:v2.41.1`        | 5556 | OIDC Identity Provider #2 (LDAP)   |
+| `glauth`   | `glauth/glauth:v2.5.0`              | 3893 | Static LDAP directory for Dex      |
+| `postgres` | `postgres:15-alpine`                | 5432 | PostgreSQL database                |
 
-Minting tokens:
 ```bash
-# Default admin token
-make dev-token
+make dev STACK=multi-idp
+```
 
-# Custom viewer token
-make dev-token SUB=viewer@example.com ROLES='["viewer"]' SYSTEM_ID=sys-1
+Pre-configured Keycloak users (realm imported automatically on first start):
+
+| Username  | Password  | OAD Role  |
+|-----------|-----------|-----------|
+| `admin`   | `admin`   | `admin`   |
+| `product` | `product` | `editor`  |
+| `auditor` | `auditor` | `viewer`  |
+| `pdp`     | `pdp`     | `viewer`  |
+
+Pre-configured Dex users (roles via `groups` claim from glauth LDAP; see `deployments/multi-idp/dex/config.yml` and `deployments/multi-idp/glauth/config.cfg`):
+
+| Email            | Password  | LDAP Group | OAD Role  |
+|------------------|-----------|------------|-----------|
+| `admin@oad.dev`  | `admin`   | `admin`    | `admin`   |
+| `editor@oad.dev` | `editor`  | `editor`   | `editor`  |
+| `viewer@oad.dev` | `viewer`  | `viewer`   | `viewer`  |
+| `pdp@oad.dev`    | `pdp`     | `viewer`   | `viewer`  |
+
+### `deployments/single-idp/` — Keycloak + Postgres
+
+Minimal stack with a single OIDC provider. Same Keycloak users as above.
+
+```bash
+make dev STACK=single-idp
+```
+
+The Management UI is served by the API at `http://localhost:8080` for both
+stacks.
+
+## Configuration file format
+
+OAD is configured via a YAML file passed with `--config` (or `-c`). Precedence:
+**CLI flag > `OAD_*` env var > YAML file > built-in defaults**.
+
+```yaml
+server:
+  addr: ":8080"            # default
+
+auth:
+  mode: jwt                # jwt | mtls | both | none
+  providers:
+    - name: keycloak
+      display_name: Keycloak
+      backend:
+        jwks_url: https://idp.example.com/realms/oad/protocol/openid-connect/certs
+        issuer:   https://idp.example.com/realms/oad
+        audience: oad-api
+        # claims_mapping is optional; omit when the IdP emits oad_roles natively.
+        claims_mapping:
+          roles_claim:     groups       # default: oad_roles
+          system_id_claim: x_system_id # default: oad_system_id
+          default_roles:               # applied when roles_claim is absent
+            - viewer
+      webui:
+        authority:  https://idp.example.com/realms/oad
+        client_id:  oad-web
+        scope:      openid profile email
+
+webui:
+  redirect_uri:    https://oad.example.com/callback
+  post_logout_uri: https://oad.example.com/
+
+database:
+  dsn: postgresql://user:pass@host:5432/oad?sslmode=require
+
+log:
+  level:  info   # debug | info | warn | error
+  format: json   # json | text
 ```
 
 # Environment variables
 
-| Variable                   | Required | Default            | Description                                      |
-|----------------------------|----------|--------------------|--------------------------------------------------|
-| `DATABASE_URL`             | Yes      | —                  | PostgreSQL connection string                     |
-| `SERVER_HOST`              | No       | `0.0.0.0`          | Bind address                                     |
-| `SERVER_PORT`              | No       | `8080`             | Listen port                                      |
-| `SERVER_SHUTDOWN_TIMEOUT`  | No       | `30s`              | Graceful shutdown timeout (Go duration)          |
-| `AUTH_MODE`                | No       | `jwt`              | `jwt`, `mtls`, or `both`                         |
-| `JWKS_URL`                 | If jwt   | —                  | JWKS endpoint URL (auto-refreshed every 15 min)  |
-| `JWT_AUDIENCE`             | If jwt   | —                  | Expected `aud` claim                             |
-| `JWT_ISSUER`               | If jwt   | —                  | Expected `iss` claim                             |
-| `MTLS_HEADER`              | No       | `X-Client-Cert`    | Header for LB-terminated mTLS                    |
-| `DB_MAX_CONNS`             | No       | `25`               | Max pool connections                             |
-| `DB_MIN_CONNS`             | No       | `5`                | Min pool connections                             |
+All environment variables use the `OAD_` prefix. The legacy unprefixed names (e.g. `DATABASE_URL`, `JWKS_URL`) still work but emit a deprecation warning at startup.
+
+## Server
+
+| Variable               | Required | Default | Description                              |
+|------------------------|----------|---------|------------------------------------------|
+| `OAD_DATABASE`         | Yes      | —       | PostgreSQL DSN                           |
+| `OAD_ADDR`             | No       | `:8080` | Bind address (`[host]:port`)             |
+| `OAD_SHUTDOWN_TIMEOUT` | No       | `30s`   | Graceful shutdown deadline (Go duration) |
+| `OAD_DB_MAX_CONNS`     | No       | `25`    | Max pool connections                     |
+| `OAD_DB_MIN_CONNS`     | No       | `5`     | Min pool connections                     |
+| `OAD_LOG_LEVEL`        | No       | `info`  | `debug` \| `info` \| `warn` \| `error`  |
+| `OAD_LOG_FORMAT`       | No       | `json`  | `json` \| `text`                         |
+
+## Authentication
+
+| Variable                    | Required      | Default          | Description                                  |
+|-----------------------------|---------------|------------------|----------------------------------------------|
+| `OAD_AUTH_MODE`             | No            | `jwt`            | `jwt` \| `mtls` \| `both` \| `none`         |
+| `OAD_MTLS_HEADER`           | No            | `X-Client-Cert`  | Header for LB-terminated mTLS cert           |
+| `OAD_JWKS_URL`              | If jwt / both | —                | JWKS endpoint URL                            |
+| `OAD_JWT_ISSUER`            | If jwt / both | —                | Expected `iss` claim                         |
+| `OAD_JWT_AUDIENCE`          | If jwt / both | —                | Expected `aud` claim                         |
+| `OAD_PROVIDER_NAME`         | No            | `default`        | Provider name (single-provider shortcut)     |
+| `OAD_PROVIDER_DISPLAY_NAME` | No            | —                | Provider display name shown in the UI        |
+| `OAD_PROVIDER_AUTHORITY`    | No            | —                | OIDC authority URL served via `/config.json` |
+| `OAD_PROVIDER_CLIENT_ID`    | No            | —                | OIDC client ID served via `/config.json`     |
+| `OAD_PROVIDER_SCOPE`        | No            | —                | OIDC scope served via `/config.json`         |
+
+## Management UI
+
+| Variable                    | Required | Default | Description                                   |
+|-----------------------------|----------|---------|-----------------------------------------------|
+| `OAD_WEBUI_REDIRECT_URI`    | No       | —       | OIDC redirect URI served via `/config.json`   |
+| `OAD_WEBUI_POST_LOGOUT_URI` | No       | —       | Post-logout redirect URI via `/config.json`   |
 
 # Authentication model
 
-The API supports three auth modes configured via `AUTH_MODE`:
+The API supports four auth modes configured via `OAD_AUTH_MODE`:
 
 - **`jwt`** (default) — validates Bearer tokens against a JWKS endpoint. Extracts `sub`, `oad_roles` (custom claim), and `oad_system_id` (custom claim) into an `Identity`.
 - **`mtls`** — extracts identity from client certificate CN (direct TLS or LB-terminated via header). Maps certificate OUs to roles.
 - **`both`** — tries JWT first, falls back to mTLS.
+- **`none`** — disables authentication (development only; never use in production).
 
 Custom JWT claims used by OAD:
 - `oad_roles` — `[]string` of application roles (`admin`, `editor`, `viewer`).
