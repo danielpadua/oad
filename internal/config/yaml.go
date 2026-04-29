@@ -37,17 +37,17 @@ type fileAuthConfig struct {
 }
 
 type fileProviderConfig struct {
-	Name        string             `yaml:"name"`
-	DisplayName string             `yaml:"display_name"`
+	Name        string              `yaml:"name"`
+	DisplayName string              `yaml:"display_name"`
 	Backend     fileProviderBackend `yaml:"backend"`
-	WebUI       fileProviderWebUI  `yaml:"webui"`
+	WebUI       fileProviderWebUI   `yaml:"webui"`
 }
 
 type fileProviderBackend struct {
-	JWKSURL       string             `yaml:"jwks_url"`
-	Issuer        string             `yaml:"issuer"`
-	Audience      string             `yaml:"audience"`
-	ClaimsMapping fileClaimsMapping  `yaml:"claims_mapping"`
+	JWKSURL       string            `yaml:"jwks_url"`
+	Issuer        string            `yaml:"issuer"`
+	Audience      string            `yaml:"audience"`
+	ClaimsMapping fileClaimsMapping `yaml:"claims_mapping"`
 }
 
 type fileClaimsMapping struct {
@@ -73,7 +73,7 @@ type fileLogConfig struct {
 }
 
 func loadFile(path string) (*fileConfig, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // path is supplied by the operator via --config or OAD_CONFIG, not user-controlled input
 	if err != nil {
 		return nil, fmt.Errorf("reading config file %q: %w", path, err)
 	}

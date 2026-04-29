@@ -110,6 +110,15 @@ func applyFile(cfg *Config, fc *fileConfig) {
 // build or replace an anonymous single-provider entry — useful when a full
 // YAML file is not needed.
 func applyEnv(cfg *Config) {
+	applyServerEnv(cfg)
+	applyDatabaseEnv(cfg)
+	applyAuthEnv(cfg)
+	applyLogEnv(cfg)
+	applyFlatProviderEnv(cfg)
+	applyWebUIEnv(cfg)
+}
+
+func applyServerEnv(cfg *Config) {
 	if v := os.Getenv("OAD_ADDR"); v != "" {
 		cfg.Server.Addr = v
 	}
@@ -118,6 +127,9 @@ func applyEnv(cfg *Config) {
 			cfg.Server.ShutdownTimeout = d
 		}
 	}
+}
+
+func applyDatabaseEnv(cfg *Config) {
 	if v := os.Getenv("OAD_DATABASE"); v != "" {
 		cfg.Database.URL = v
 	}
@@ -131,77 +143,85 @@ func applyEnv(cfg *Config) {
 			cfg.Database.MinConns = int32(i)
 		}
 	}
+}
+
+func applyAuthEnv(cfg *Config) {
 	if v := os.Getenv("OAD_AUTH_MODE"); v != "" {
 		cfg.Auth.Mode = v
 	}
 	if v := os.Getenv("OAD_MTLS_HEADER"); v != "" {
 		cfg.Auth.MTLSHeader = v
 	}
+}
+
+func applyLogEnv(cfg *Config) {
 	if v := os.Getenv("OAD_LOG_LEVEL"); v != "" {
 		cfg.Log.Level = v
 	}
 	if v := os.Getenv("OAD_LOG_FORMAT"); v != "" {
 		cfg.Log.Format = v
 	}
+}
 
-	// Flat single-provider env vars: build/replace the first provider entry.
-	// Covers both backend (JWT validation) and WebUI (frontend OIDC client) fields
-	// so that a single-IdP deployment can be fully configured without a YAML file.
-	// The embedded dev IdP (devidp build tag) uses this mechanism to self-register.
-	{
-		jwksURL := os.Getenv("OAD_JWKS_URL")
-		issuer := os.Getenv("OAD_JWT_ISSUER")
-		audience := os.Getenv("OAD_JWT_AUDIENCE")
-		name := os.Getenv("OAD_PROVIDER_NAME")
-		displayName := os.Getenv("OAD_PROVIDER_DISPLAY_NAME")
-		authority := os.Getenv("OAD_PROVIDER_AUTHORITY")
-		clientID := os.Getenv("OAD_PROVIDER_CLIENT_ID")
-		scope := os.Getenv("OAD_PROVIDER_SCOPE")
+// applyFlatProviderEnv builds or replaces a single anonymous provider from flat
+// env vars. Covers both backend (JWT validation) and WebUI (frontend OIDC client)
+// fields so a single-IdP deployment can be fully configured without a YAML file.
+// The embedded dev IdP (devidp build tag) uses this mechanism to self-register.
+func applyFlatProviderEnv(cfg *Config) {
+	name := os.Getenv("OAD_PROVIDER_NAME")
+	displayName := os.Getenv("OAD_PROVIDER_DISPLAY_NAME")
+	jwksURL := os.Getenv("OAD_JWKS_URL")
+	issuer := os.Getenv("OAD_JWT_ISSUER")
+	audience := os.Getenv("OAD_JWT_AUDIENCE")
+	authority := os.Getenv("OAD_PROVIDER_AUTHORITY")
+	clientID := os.Getenv("OAD_PROVIDER_CLIENT_ID")
+	scope := os.Getenv("OAD_PROVIDER_SCOPE")
 
-		if jwksURL != "" || issuer != "" || audience != "" ||
-			name != "" || displayName != "" ||
-			authority != "" || clientID != "" || scope != "" {
-			p := ProviderConfig{Name: "default"}
-			if len(cfg.Auth.Providers) > 0 {
-				p = cfg.Auth.Providers[0]
-			}
-			if name != "" {
-				p.Name = name
-			}
-			if displayName != "" {
-				p.DisplayName = displayName
-			}
-			if jwksURL != "" {
-				p.Backend.JWKSURL = jwksURL
-			}
-			if issuer != "" {
-				p.Backend.Issuer = issuer
-			}
-			if audience != "" {
-				p.Backend.Audience = audience
-			}
-			if authority != "" {
-				p.WebUI.Authority = authority
-			}
-			if clientID != "" {
-				p.WebUI.ClientID = clientID
-			}
-			if scope != "" {
-				p.WebUI.Scope = scope
-			}
-			if len(cfg.Auth.Providers) == 0 {
-				cfg.Auth.Providers = []ProviderConfig{p}
-			} else {
-				cfg.Auth.Providers[0] = p
-			}
-		}
+	if !anyNonEmpty(name, displayName, jwksURL, issuer, audience, authority, clientID, scope) {
+		return
 	}
 
+	p := ProviderConfig{Name: "default"}
+	if len(cfg.Auth.Providers) > 0 {
+		p = cfg.Auth.Providers[0]
+	}
+	setIfNonEmpty(&p.Name, name)
+	setIfNonEmpty(&p.DisplayName, displayName)
+	setIfNonEmpty(&p.Backend.JWKSURL, jwksURL)
+	setIfNonEmpty(&p.Backend.Issuer, issuer)
+	setIfNonEmpty(&p.Backend.Audience, audience)
+	setIfNonEmpty(&p.WebUI.Authority, authority)
+	setIfNonEmpty(&p.WebUI.ClientID, clientID)
+	setIfNonEmpty(&p.WebUI.Scope, scope)
+
+	if len(cfg.Auth.Providers) == 0 {
+		cfg.Auth.Providers = []ProviderConfig{p}
+	} else {
+		cfg.Auth.Providers[0] = p
+	}
+}
+
+func applyWebUIEnv(cfg *Config) {
 	if v := os.Getenv("OAD_WEBUI_REDIRECT_URI"); v != "" {
 		cfg.WebUI.RedirectURI = v
 	}
 	if v := os.Getenv("OAD_WEBUI_POST_LOGOUT_URI"); v != "" {
 		cfg.WebUI.PostLogoutURI = v
+	}
+}
+
+func anyNonEmpty(values ...string) bool {
+	for _, v := range values {
+		if v != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func setIfNonEmpty(dst *string, val string) {
+	if val != "" {
+		*dst = val
 	}
 }
 
@@ -311,7 +331,7 @@ func warnDeprecated() {
 			if port == "" {
 				port = "8080"
 			}
-			os.Setenv("OAD_ADDR", host+":"+port) //nolint:errcheck
+			os.Setenv("OAD_ADDR", host+":"+port) //nolint:errcheck // os.Setenv only fails on invalid keys; the constant key here is valid
 		}
 	}
 
@@ -321,17 +341,17 @@ func warnDeprecated() {
 	copyLegacyEnv("JWT_AUDIENCE", "OAD_JWT_AUDIENCE")
 }
 
-func copyLegacyEnv(old, new string) {
-	if os.Getenv(old) != "" && os.Getenv(new) == "" {
-		os.Setenv(new, os.Getenv(old)) //nolint:errcheck
+func copyLegacyEnv(oldName, newName string) {
+	if os.Getenv(oldName) != "" && os.Getenv(newName) == "" {
+		os.Setenv(newName, os.Getenv(oldName)) //nolint:errcheck // os.Setenv only fails on invalid keys; callers pass valid constants
 	}
 }
 
-// copyLegacyEnvComma copies old → new only for single-value cases.
+// copyLegacyEnvComma copies oldName → newName only for single-value cases.
 // Multi-value JWKS_URL / JWT_ISSUER picks up the first entry only.
-func copyLegacyEnvComma(old, new string) {
-	if os.Getenv(old) != "" && os.Getenv(new) == "" {
-		parts := strings.SplitN(os.Getenv(old), ",", 2)
-		os.Setenv(new, strings.TrimSpace(parts[0])) //nolint:errcheck
+func copyLegacyEnvComma(oldName, newName string) {
+	if os.Getenv(oldName) != "" && os.Getenv(newName) == "" {
+		parts := strings.SplitN(os.Getenv(oldName), ",", 2)
+		os.Setenv(newName, strings.TrimSpace(parts[0])) //nolint:errcheck // see copyLegacyEnv
 	}
 }

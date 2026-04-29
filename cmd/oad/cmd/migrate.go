@@ -28,7 +28,7 @@ var migrateUpCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer m.Close() //nolint:errcheck
+		defer m.Close() //nolint:errcheck // close errors do not affect the user-facing migration outcome
 
 		if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 			return fmt.Errorf("applying migrations: %w", err)
@@ -47,7 +47,7 @@ var migrateDownCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer m.Close() //nolint:errcheck
+		defer m.Close() //nolint:errcheck // close errors do not affect the user-facing migration outcome
 
 		if err := m.Steps(-1); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 			return fmt.Errorf("rolling back migration: %w", err)
@@ -66,7 +66,7 @@ var migrateStatusCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer m.Close() //nolint:errcheck
+		defer m.Close() //nolint:errcheck // close errors do not affect the user-facing migration outcome
 
 		version, dirty, err := m.Version()
 		if errors.Is(err, migrate.ErrNilVersion) {
