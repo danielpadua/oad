@@ -144,6 +144,50 @@
 ### Phase 8 — Hardening & Operability
 
 86. [ ] Load testing with k6: p99 retrieval < 100ms, p99 relations < 200ms, p99 changelog < 500ms
-87. [ ] Security integration tests: cross-system isolation, RLS bypass attempts, unauthorized overlay access
+87. [ ] Security integration tests: cross-system isolation, RLS bypass attempts, unauthorized overlay access. **Includes Phase 9.A test-infra debt** — new DB-integration coverage for the `is_builtin` handler guard, `assert_system_id_targets_system_entity` trigger, RLS for global entities, and `entity_external_identity` round-trip. Build the harness first (testcontainers or equivalent) then add the suites.
 88. [ ] E2E tests with Playwright: OIDC login, CRUD flows, role enforcement in Management UI
 89. [ ] Production deployment documentation (Dockerfile, environment variables, TLS configuration)
+
+### Phase 9 — User Provisioning (SCIM ingest + DB-authoritative auth)
+
+> Design source of truth: [docs/design/scim-ingest.md](design/scim-ingest.md), [docs/design/db-authoritative-auth.md](design/db-authoritative-auth.md). High-level rationale and sequencing are recorded there; this section is the executable task list.
+>
+> Sequence: A (foundation schema) → B (SCIM ingest) → C (DB-authoritative auth) → D (admin UI for users / groups / permissions).
+
+#### Phase 9.A — Foundation Schema
+
+90. [x] A.1 — Rewrite migration 000001 with `is_builtin`, `entity_external_identity`, System-as-entity, type-check trigger, RLS clarification; seed 4 built-in types and 3 reserved Groups; merge 000002 cascade inline
+91. [x] A.2 — Adapt `internal/system`, `internal/api/handler/stats`, `internal/overlay`, `internal/overlayschema` to query System as an entity of type `System` (preserves `/api/v1/systems` API contract)
+92. **DEFERRED** A.3 — Integration test coverage for new schema (`is_builtin` guard, type-check trigger, RLS for global entities, external_identity CRUD). No DB-integration test harness exists yet; folded into Phase 8 #87 above. Manual psql validation of migration up/down/roundtrip done at A.1 commit time.
+93. [x] A.4 — Update `data-model.md` (v0.3) and this backlog for Phase A; register A.3 as test-infra debt under Phase 8 #87
+
+#### Phase 9.B — SCIM Ingest
+
+> Sub-phases follow [scim-ingest.md §15](design/scim-ingest.md#15-phased-implementation-breakdown). B.1 (schema foundation) was delivered as 9.A.1 above and is not repeated here.
+
+94. [ ] B.2 — Tenant token authentication, SCIM router mount at `/scim/v2`, discovery endpoints (`/ServiceProviderConfig`, `/Schemas`, `/ResourceTypes`)
+95. [ ] B.3 — Users CRUD: endpoints, mapper (SCIM `User` ↔ entity), filter subset (eq/ne/co/sw/ew/pr/and/or), pagination
+96. [ ] B.4 — Groups CRUD: endpoints, mapper (SCIM `Group` ↔ entity + relations), member resolution via `entity_external_identity`
+97. [ ] B.5 — PATCH support for Users and Groups (documented subset of paths from §7.1)
+98. [ ] B.6 — `scim-protocol-tester` utility under `deployments/scim-protocol-tester/` — YAML-scenario-driven raw SCIM client for protocol-edge tests
+99. [ ] B.7 — Replace Dex+glauth with Authentik in `deployments/multi-idp/`; author Authentik blueprint pre-configuring users/groups/SCIM Provider; CI integration
+
+#### Phase 9.C — DB-Authoritative Authorization
+
+> Sub-phases follow [db-authoritative-auth.md §15](design/db-authoritative-auth.md#15-phased-implementation-breakdown).
+
+100. [ ] C.1 — Identity resolver: `(provider, sub) → entity` lookup, group/system traversal, no cache yet; bootstrap admins via YAML; new `/api/v1/me` endpoint
+101. [ ] C.2 — Identity cache (LRU, 30s TTL, configurable) + invalidation hooks called from SCIM and admin handlers
+102. [ ] C.3 — `X-OAD-System-Id` header support; replace every `oad_system_id`-derived consumer with header-derived `ActiveSystemID`
+103. [ ] C.4 — Remove `oad_roles` / `oad_system_id` from `claims_mapping`; delete obsolete config code; reject the obsolete keys at startup with a clear error
+104. [ ] C.5 — Update authn/authz tests; rewrite data-model.md §4.8 to reflect DB-authoritative model; update CLAUDE.md
+105. [ ] C.6 — UI: HTTP client attaches `X-OAD-System-Id` from active scope; `AuthContext` consumes new identity shape from `/api/v1/me`
+
+#### Phase 9.D — Admin UI for Users / Groups / Permissions
+
+106. [ ] User list view (entities of type User) with provider attribution column, soft-delete indicator, and per-row external identities
+107. [ ] Group list / detail with membership and `has_permission` relation management; assign Group → `oad:admin`/`oad:editor`/`oad:viewer` for OAD management plane access
+108. [ ] Permission catalog CRUD (admin REST API consumed by UI; doubles as IGA integration surface)
+109. [ ] Cross-IdP user merge: attach a second `entity_external_identity` to an existing entity, drop the duplicate
+110. [ ] SCIM token rotation UI (depends on a future move from config-driven tokens to DB-managed; see scim-ingest.md §5.3)
+111. [ ] Bootstrap admins viewer (read-only display of `auth.bootstrap_admins[]` from config)

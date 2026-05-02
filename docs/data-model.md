@@ -1,6 +1,8 @@
-# OAD — Data Model (v0.2)
+# OAD — Data Model (v0.3)
 
 > Derived from the [Product Specification](spec.md) and [Requirements](requirements.md). All tables target PostgreSQL 15+.
+>
+> **v0.3 (Phase A) update:** the standalone `system` table was removed; System rows now live in `entity` with `type_name = 'System'`. New `is_builtin` flag on `entity_type_definition` and `entity` protects seeded rows. New `entity_external_identity` table links external IdP subjects (SCIM `id` values) to OAD entities. See [scim-ingest.md §3](design/scim-ingest.md#3-schema-foundation-phase-a) for the full Phase A schema rationale.
 
 ---
 
@@ -14,15 +16,7 @@ erDiagram
         jsonb allowed_properties "JSON Schema document"
         jsonb allowed_relations "relation_type -> target types"
         varchar scope "global | system_scoped"
-        timestamptz created_at
-        timestamptz updated_at
-    }
-
-    system {
-        uuid id PK
-        varchar name UK
-        text description
-        boolean active "default true"
+        boolean is_builtin "protects seeded types"
         timestamptz created_at
         timestamptz updated_at
     }
@@ -32,7 +26,17 @@ erDiagram
         uuid type_id FK "-> entity_type_definition"
         varchar external_id "unique within type"
         jsonb properties "validated against type schema"
-        uuid system_id FK "nullable, system-scoped types only"
+        uuid system_id FK "-> entity[type=System], nullable"
+        boolean is_builtin "protects seeded entities"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    entity_external_identity {
+        uuid id PK
+        uuid entity_id FK "-> entity"
+        varchar provider_name "auth.providers[].name"
+        varchar external_subject "SCIM id"
         timestamptz created_at
         timestamptz updated_at
     }
@@ -42,13 +46,13 @@ erDiagram
         uuid subject_entity_id FK "-> entity"
         varchar relation_type "validated against type def"
         uuid target_entity_id FK "-> entity"
-        uuid system_id FK "nullable, system-scoped"
+        uuid system_id FK "-> entity[type=System], nullable"
         timestamptz created_at
     }
 
     system_overlay_schema {
         uuid id PK
-        uuid system_id FK "-> system"
+        uuid system_id FK "-> entity[type=System]"
         uuid entity_type_id FK "-> entity_type_definition"
         jsonb allowed_overlay_properties "JSON Schema, namespaced keys"
         timestamptz created_at
@@ -58,7 +62,7 @@ erDiagram
     property_overlay {
         uuid id PK
         uuid entity_id FK "-> entity"
-        uuid system_id FK "-> system"
+        uuid system_id FK "-> entity[type=System]"
         jsonb properties "namespaced, validated against schema"
         timestamptz created_at
         timestamptz updated_at
@@ -66,7 +70,7 @@ erDiagram
 
     webhook_subscription {
         uuid id PK
-        uuid system_id FK "-> system"
+        uuid system_id FK "-> entity[type=System]"
         varchar callback_url
         varchar secret "HMAC signing key"
         boolean active "default true"
@@ -93,7 +97,7 @@ erDiagram
         uuid resource_id
         jsonb before_value "nullable"
         jsonb after_value "nullable"
-        uuid system_id "nullable"
+        uuid system_id "nullable, no FK"
         timestamptz timestamp
     }
 
@@ -102,21 +106,20 @@ erDiagram
         varchar caller_identity "PDP or API client"
         jsonb query_parameters
         jsonb returned_refs "entity references returned"
-        uuid system_id "nullable"
+        uuid system_id "nullable, no FK"
         timestamptz timestamp
     }
 
     entity_type_definition ||--o{ entity : "defines type"
     entity_type_definition ||--o{ system_overlay_schema : "governs"
-    system ||--o{ entity : "scopes"
-    system ||--o{ system_overlay_schema : "declares"
-    system ||--o{ property_overlay : "owns"
-    system ||--o{ relation : "scopes"
-    system ||--o{ webhook_subscription : "subscribes"
-    system_overlay_schema ||--o{ property_overlay : "validates"
+    entity ||--o{ entity : "scopes (system_id, type=System)"
+    entity ||--o{ entity_external_identity : "linked from"
     entity ||--o{ relation : "is subject"
     entity ||--o{ relation : "is target"
     entity ||--o{ property_overlay : "extended by"
+    entity ||--o{ system_overlay_schema : "system declares"
+    entity ||--o{ webhook_subscription : "system subscribes"
+    system_overlay_schema ||--o{ property_overlay : "validates"
     webhook_subscription ||--o{ webhook_delivery : "produces"
     audit_log ||--o{ webhook_delivery : "triggers"
 ```
@@ -132,41 +135,56 @@ Schema registry for entity types. Controls what entities can exist and constrain
 | Column | Type | Constraints | Description |
 |---|---|---|---|
 | `id` | `uuid` | PK, default `gen_random_uuid()` | Internal identifier. |
-| `type_name` | `varchar(100)` | UNIQUE, NOT NULL | Logical name (`user`, `role`, `document`). Used as the entity type reference throughout the system. |
+| `type_name` | `varchar(100)` | UNIQUE, NOT NULL | Logical name (`User`, `Group`, `System`, `Permission`, `Document`, ...). Used as the entity type reference throughout the system. |
 | `allowed_properties` | `jsonb` | NOT NULL | JSON Schema document that validates entity properties of this type. |
-| `allowed_relations` | `jsonb` | NOT NULL | Declares valid `relation_type` values and their allowed target entity types. Structure: `{"member": {"target_types": ["group", "role"]}}`. |
+| `allowed_relations` | `jsonb` | NOT NULL | Declares valid `relation_type` values and their allowed target entity types. Structure: `{"member_of": {"target_types": ["Group"]}}`. |
 | `scope` | `varchar(20)` | NOT NULL, CHECK (`global`, `system_scoped`) | Whether entities of this type exist globally or only within a system. |
+| `is_builtin` | `boolean` | NOT NULL, default `false` | Marks types seeded by migration. Built-in types cannot be deleted or have their schema modified through the API (handler-level guard). |
 | `created_at` | `timestamptz` | NOT NULL, default `now()` | Creation timestamp. |
 | `updated_at` | `timestamptz` | NOT NULL, default `now()` | Last modification timestamp. |
 
+**Built-in types** (Phase A seeds, all `scope = global`, `is_builtin = true`):
+
+| `type_name` | Purpose |
+|---|---|
+| `User` | Human identities ingested from IdPs via SCIM (Phase B). |
+| `Group` | Collections of users; the unit of authorization grant. |
+| `System` | Registered applications (replaces the standalone `system` table from v0.1). |
+| `Permission` | Entitlement catalog; granted to groups via the `has_permission` relation, optionally per-system via `relation.system_id`. |
+
 **Requirement traceability:** FR-ETD-001, FR-ETD-002, FR-ETD-003, FR-ETD-004, NFR-EXT-001.
 
-### 2.2 `system`
+### 2.2 `entity_external_identity`
 
-Registered applications whose authorization data is managed in OAD. Defines the management boundary for product teams.
+Links external IdP subjects to OAD entities. Populated by SCIM ingest (Phase B) and consumed at JWT-validation time (Phase C) to resolve a JWT `(iss, sub)` pair into an `entity.id`.
 
 | Column | Type | Constraints | Description |
 |---|---|---|---|
 | `id` | `uuid` | PK, default `gen_random_uuid()` | Internal identifier. |
-| `name` | `varchar(200)` | UNIQUE, NOT NULL | Human-readable system name. |
-| `description` | `text` | | Optional description of the system. |
-| `active` | `boolean` | NOT NULL, default `true` | Inactive systems have their overlays excluded from retrieval responses. |
-| `created_at` | `timestamptz` | NOT NULL, default `now()` | Creation timestamp. |
-| `updated_at` | `timestamptz` | NOT NULL, default `now()` | Last modification timestamp. |
+| `entity_id` | `uuid` | FK → `entity.id`, NOT NULL, ON DELETE CASCADE | The OAD entity this external identity refers to (typically a User, but the link is type-agnostic). |
+| `provider_name` | `varchar(100)` | NOT NULL | Matches `auth.providers[].name` in the YAML config. |
+| `external_subject` | `varchar(500)` | NOT NULL | The IdP's stable identifier — SCIM `id` value, derived from the IdP's internal user ID. Unique within a provider, not globally. |
+| `created_at` | `timestamptz` | NOT NULL, default `now()` | First sight of this external identity. |
+| `updated_at` | `timestamptz` | NOT NULL, default `now()` | Last update from the IdP. |
 
-**Requirement traceability:** FR-SYS-001, FR-SYS-002, FR-SYS-003.
+**Unique constraint:** `(provider_name, external_subject)` — same external subject from same provider always resolves to the same OAD entity.
+
+**Many-to-one:** a single OAD entity can have multiple external identities. Cross-IdP merge (combining two entities into one with both external identities attached) is supported in Phase D admin UI.
+
+**Cross-reference:** [scim-ingest.md §3.3](design/scim-ingest.md#33-new-table-entity_external_identity), [db-authoritative-auth.md §5](design/db-authoritative-auth.md#5-identity-resolution-algorithm).
 
 ### 2.3 `entity`
 
-A typed node in the authorization graph. Represents subjects, resources, roles, permissions, groups, or any other typed object.
+A typed node in the authorization graph. Represents subjects, resources, roles, permissions, groups, registered systems, or any other typed object.
 
 | Column | Type | Constraints | Description |
 |---|---|---|---|
 | `id` | `uuid` | PK, default `gen_random_uuid()` | Internal identifier. |
 | `type_id` | `uuid` | FK → `entity_type_definition.id`, NOT NULL | The entity's type. Determines property validation schema and allowed relations. |
-| `external_id` | `varchar(500)` | NOT NULL | Identifier from the source system (employee ID, resource ARN, etc.). |
+| `external_id` | `varchar(500)` | NOT NULL | Identifier from the source system (employee ID, resource ARN, system name, etc.). |
 | `properties` | `jsonb` | NOT NULL, default `'{}'` | Global attributes. Validated against `entity_type_definition.allowed_properties` on every write. |
-| `system_id` | `uuid` | FK → `system.id`, nullable | Set only for entities whose type has `scope = system_scoped`. NULL for global entities. |
+| `system_id` | `uuid` | FK → `entity.id`, nullable | Set only for entities whose type has `scope = system_scoped`. NULL for global entities. Enforced by trigger to reference an entity of type `System` (see §4.9). |
+| `is_builtin` | `boolean` | NOT NULL, default `false` | Marks reserved entities seeded by migration (currently the three reserved Groups: `oad:admin`, `oad:editor`, `oad:viewer`). Built-in entities cannot be deleted or have their properties modified through the API. |
 | `created_at` | `timestamptz` | NOT NULL, default `now()` | Creation timestamp. |
 | `updated_at` | `timestamptz` | NOT NULL, default `now()` | Last modification timestamp. |
 
@@ -174,7 +192,9 @@ A typed node in the authorization graph. Represents subjects, resources, roles, 
 
 **Conditional constraint:** When `entity_type_definition.scope = 'system_scoped'`, `system_id` must not be null (enforced via application-level validation or a CHECK constraint with a subquery trigger).
 
-**Requirement traceability:** FR-ENT-001 through FR-ENT-008.
+**Self-reference via `system_id`:** because System rows live in `entity` (Phase A), the `system_id` FK is a self-reference. The trigger `assert_system_id_targets_system_entity` (see §4.9) ensures the referenced entity is of type `System`.
+
+**Requirement traceability:** FR-ENT-001 through FR-ENT-008, FR-SYS-001, FR-SYS-002, FR-SYS-003 (the system FRs are fulfilled by entities of type `System`).
 
 ### 2.4 `system_overlay_schema`
 
@@ -183,7 +203,7 @@ Declares which overlay properties a specific system is allowed to attach to enti
 | Column | Type | Constraints | Description |
 |---|---|---|---|
 | `id` | `uuid` | PK, default `gen_random_uuid()` | Internal identifier. |
-| `system_id` | `uuid` | FK → `system.id`, NOT NULL | The system this schema applies to. |
+| `system_id` | `uuid` | FK → `entity.id`, NOT NULL | The system this schema applies to. Trigger-enforced to reference an entity of type `System` (see §4.9). |
 | `entity_type_id` | `uuid` | FK → `entity_type_definition.id`, NOT NULL | The entity type this schema governs. |
 | `allowed_overlay_properties` | `jsonb` | NOT NULL | JSON Schema document that validates overlay properties. All declared property keys must be prefixed with the system's name (e.g., `credit.max_approval`). |
 | `created_at` | `timestamptz` | NOT NULL, default `now()` | Creation timestamp. |
@@ -205,7 +225,7 @@ A typed, directed edge between two entities. The building block for RBAC and ReB
 | `subject_entity_id` | `uuid` | FK → `entity.id`, NOT NULL, ON DELETE CASCADE | The source entity of the relation. |
 | `relation_type` | `varchar(100)` | NOT NULL | The kind of edge (`member`, `owner`, `viewer`, `grants`). Validated against the subject entity's type definition. |
 | `target_entity_id` | `uuid` | FK → `entity.id`, NOT NULL, ON DELETE CASCADE | The target entity of the relation. |
-| `system_id` | `uuid` | FK → `system.id`, nullable | When set, the relation exists only within this system's scope. NULL means the relation is global. |
+| `system_id` | `uuid` | FK → `entity.id`, nullable | When set, the relation exists only within this system's scope. NULL means the relation is global. Trigger-enforced to reference an entity of type `System` (see §4.9). |
 | `created_at` | `timestamptz` | NOT NULL, default `now()` | Creation timestamp. |
 
 **Unique constraint:** `(subject_entity_id, relation_type, target_entity_id, system_id)` — prevents duplicate relations. Uses a partial unique index for the NULL `system_id` case.
@@ -220,7 +240,7 @@ System-specific properties layered on top of a global entity. When a PDP request
 |---|---|---|---|
 | `id` | `uuid` | PK, default `gen_random_uuid()` | Internal identifier. |
 | `entity_id` | `uuid` | FK → `entity.id`, NOT NULL, ON DELETE CASCADE | The global entity being extended. |
-| `system_id` | `uuid` | FK → `system.id`, NOT NULL | The system that owns this overlay. |
+| `system_id` | `uuid` | FK → `entity.id`, NOT NULL | The system that owns this overlay. Trigger-enforced to reference an entity of type `System` (see §4.9). |
 | `properties` | `jsonb` | NOT NULL, default `'{}'` | System-specific properties with namespaced keys (e.g., `credit.max_approval`). Validated against `system_overlay_schema.allowed_overlay_properties` on every write. Merged with `entity.properties` on retrieval. |
 | `created_at` | `timestamptz` | NOT NULL, default `now()` | Creation timestamp. |
 | `updated_at` | `timestamptz` | NOT NULL, default `now()` | Last modification timestamp. |
@@ -236,7 +256,7 @@ Event notification subscriptions. Consumers register a callback URL to receive c
 | Column | Type | Constraints | Description |
 |---|---|---|---|
 | `id` | `uuid` | PK, default `gen_random_uuid()` | Internal identifier. |
-| `system_id` | `uuid` | FK → `system.id`, NOT NULL | The system whose changes trigger notifications. |
+| `system_id` | `uuid` | FK → `entity.id`, NOT NULL | The system whose changes trigger notifications. Trigger-enforced to reference an entity of type `System` (see §4.9). |
 | `callback_url` | `varchar(2000)` | NOT NULL | The URL to POST event payloads to. |
 | `secret` | `varchar(500)` | NOT NULL | Shared secret for HMAC-SHA256 signature of webhook payloads, enabling receivers to verify authenticity. |
 | `active` | `boolean` | NOT NULL, default `true` | Inactive subscriptions do not receive deliveries. |
@@ -309,7 +329,10 @@ Record of every retrieval event for compliance. Separate from `audit_log` becaus
 |---|---|---|---|---|
 | `entity` | `(type_id, external_id)` | UNIQUE B-tree | Entity lookup by type + external ID — the primary retrieval path. | FR-RET-001 |
 | `entity` | `properties` | GIN | Filtered queries on dynamic properties (`WHERE properties @> '{"department":"ops"}'`). | FR-RET-002 |
+| `entity` | `(type_id)` | B-tree | Type-filtered queries (e.g., "all Systems", "all Groups"). |  |
 | `entity` | `(system_id)` | B-tree | Filter entities by system scope. | FR-OVL-003 |
+| `entity_external_identity` | `(provider_name, external_subject)` | UNIQUE B-tree | Primary lookup at JWT-validation time: `(iss → provider, sub) → entity_id`. | (Phase C) |
+| `entity_external_identity` | `(entity_id)` | B-tree | Reverse lookup — list all external identities linked to an entity. | (Phase D merge UI) |
 | `relation` | `(subject_entity_id, relation_type)` | B-tree | "All relations where entity X is the subject, filtered by type." | FR-REL-005 |
 | `relation` | `(target_entity_id, relation_type)` | B-tree | Reverse lookup — "who is related to entity Y?" | FR-REL-005 |
 | `relation` | `(subject_entity_id, relation_type, target_entity_id, system_id)` | UNIQUE B-tree | Duplicate prevention. Partial index for NULL `system_id`. | FR-REL-003 |
@@ -398,20 +421,56 @@ CREATE UNIQUE INDEX uq_relation_scoped
 
 ### 4.7 Row-Level Security (RLS) strategy
 
-RLS is applied on `entity` (for system-scoped types), `relation`, `property_overlay`, and `webhook_subscription`. The application sets a session variable (`SET LOCAL app.current_system_id = '...'`) per request, and RLS policies filter rows automatically:
+RLS is applied on `entity`, `relation`, `property_overlay`, and `webhook_subscription`. The application sets a session variable (`SET LOCAL app.current_system_id = '...'`) per request, and RLS policies filter rows automatically.
+
+The policy admits three modes:
+
+- **Global rows** (`system_id IS NULL`) — always visible. This covers global entity types (`User`, `Group`, `System`, `Permission`), global relations like `User --member_of--> Group`, and the `entity_type_definition` registry.
+- **Admin mode** (session variable not set / empty string) — no restriction.
+- **System-scoped mode** (session variable set to a UUID) — only rows whose `system_id` matches are visible.
 
 ```sql
--- Example: property_overlay access restricted to the caller's system
-ALTER TABLE property_overlay ENABLE ROW LEVEL SECURITY;
-CREATE POLICY overlay_system_isolation ON property_overlay
-  USING (system_id = current_setting('app.current_system_id')::uuid);
+-- Actual policy on the entity table (migration 000001):
+CREATE POLICY entity_system_isolation ON entity
+  USING (
+    system_id IS NULL
+    OR current_setting('app.current_system_id', true) = ''
+    OR system_id::text = current_setting('app.current_system_id', true)
+  );
 ```
 
-Platform administrators bypass RLS via a separate database role with `BYPASSRLS`.
+`property_overlay` and `webhook_subscription` omit the first clause because they have no notion of "global" rows — every overlay/subscription belongs to a system.
+
+`FORCE ROW LEVEL SECURITY` is set on each table so policies apply even to the table owner (the default Postgres superuser used in development), making RLS testable end-to-end without a separate role.
+
+Platform administrators bypass RLS via the empty-session-variable mode rather than via a separate `BYPASSRLS` role.
 
 ### 4.8 Management UI access control
 
-The management UI authenticates users via an external IdP (JWT). User roles (`admin`, `editor`, `viewer`) and system assignments are conveyed as JWT claims. This avoids a circular dependency where OAD would need to query itself for access control during authentication, and keeps the identity management responsibility with the IdP where it belongs.
+> **Phase C will rewrite this section.** Until DB-authoritative authentication lands, the JWT carries `oad_roles` and `oad_system_id` custom claims. After Phase C, these claims will no longer be read; group membership and system access will be resolved from the entity / relation graph populated by SCIM ingest, and the active system context will be conveyed via the `X-OAD-System-Id` HTTP header. See [db-authoritative-auth.md](design/db-authoritative-auth.md) for the target design.
+
+The management UI authenticates users via an external IdP (JWT). User roles (`admin`, `editor`, `viewer`) and system assignments are currently conveyed as JWT claims. This avoids a circular dependency where OAD would need to query itself for access control during authentication, and keeps the identity management responsibility with the IdP where it belongs.
+
+### 4.9 Phase A unification: System as entity, `is_builtin`, and the type-check trigger
+
+**System unification** — In v0.1 a dedicated `system` table held registered applications. In v0.3 (Phase A), Systems are entities of type `System`, removing the parallel storage. Benefits:
+
+- The authorization graph is uniform: `relation` connects entities to entities, including `User --has_role_in--> System` and `Group --has_role_in--> System`.
+- Per-system attributes can be carried on the System entity (`property_overlay`, future use cases).
+- Webhooks, audit, and other entity-aware machinery cover Systems for free.
+
+**`is_builtin` flag** — Built-in types (`User`, `Group`, `System`, `Permission`) and built-in entities (the three reserved Groups `oad:admin`, `oad:editor`, `oad:viewer`) carry `is_builtin = true`. This flag is **enforced at the application layer**, not by a DB constraint: handlers reject delete and modify operations on rows where `is_builtin = true`. The flag is informational at the SQL layer.
+
+**`assert_system_id_targets_system_entity` trigger** — Applied as a `BEFORE INSERT OR UPDATE OF system_id` trigger on every table with a `system_id` FK to `entity` (`entity`, `relation`, `system_overlay_schema`, `property_overlay`, `webhook_subscription`). The trigger:
+
+1. Allows `NULL` (global rows).
+2. Looks up the System type's `id` from `entity_type_definition` by `type_name = 'System'`.
+3. Reads the referenced entity's `type_id`.
+4. Raises `EXCEPTION` if the types do not match.
+
+This compensates for PostgreSQL's lack of cross-table CHECK constraints. A foreign key alone cannot express "must reference a row whose `type_id` matches a specific type definition row."
+
+**Cross-references:** [scim-ingest.md §3.4](design/scim-ingest.md#34-drop-system-table-promote-system-to-an-entity-type) (drop `system` table), [scim-ingest.md §3.5](design/scim-ingest.md#35-seeded-built-in-types) (seeded types), [scim-ingest.md §3.6](design/scim-ingest.md#36-seeded-built-in-groups) (reserved Groups).
 
 ---
 
@@ -421,3 +480,4 @@ The management UI authenticates users via an external IdP (JWT). User roles (`ad
 |---|---|---|
 | 0.1 | 2026-04-10 | Initial draft — ER diagram, table definitions, indexes, design decisions |
 | 0.2 | 2026-04-10 | Add `system_overlay_schema` table; namespace enforcement for overlay property keys; update ER diagram, indexes, and design decisions |
+| 0.3 | 2026-04-29 | Phase A schema. Drop `system` table; promote System to entity type. Add `is_builtin` flag on `entity_type_definition` and `entity`. Add `entity_external_identity` table for SCIM ingest. Retarget `system_id` FKs from `system.id` to `entity.id` with type-check trigger (§4.9). Update RLS to make global rows always visible. Annotate §4.8 as scheduled for Phase C rewrite. |
