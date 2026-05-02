@@ -39,7 +39,13 @@ func (h *StatsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		if err := tx.QueryRow(r.Context(), `SELECT COUNT(*) FROM entity`).Scan(&out.TotalEntities); err != nil {
 			return fmt.Errorf("counting entities: %w", err)
 		}
-		if err := tx.QueryRow(r.Context(), `SELECT COUNT(*) FROM system WHERE active = true`).Scan(&out.ActiveSystems); err != nil {
+		if err := tx.QueryRow(r.Context(),
+			`SELECT COUNT(*)
+			 FROM entity e
+			 JOIN entity_type_definition t ON t.id = e.type_id
+			 WHERE t.type_name = 'System'
+			   AND COALESCE((e.properties->>'active')::bool, true) = true`,
+		).Scan(&out.ActiveSystems); err != nil {
 			return fmt.Errorf("counting active systems: %w", err)
 		}
 		if err := tx.QueryRow(r.Context(), `SELECT COUNT(*) FROM webhook_subscription WHERE active = true`).Scan(&out.SubscribedWebhooks); err != nil {

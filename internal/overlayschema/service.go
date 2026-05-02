@@ -181,7 +181,11 @@ func (s *Service) Delete(ctx context.Context, systemID, schemaID uuid.UUID) erro
 func (s *Service) resolveSystemName(ctx context.Context, systemID uuid.UUID) (string, *apierr.APIError) {
 	var name string
 	err := s.pool.QueryRow(ctx,
-		`SELECT name FROM system WHERE id = $1`, systemID,
+		`SELECT e.properties->>'name'
+		 FROM entity e
+		 JOIN entity_type_definition t ON t.id = e.type_id
+		 WHERE e.id = $1 AND t.type_name = 'System'`,
+		systemID,
 	).Scan(&name)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

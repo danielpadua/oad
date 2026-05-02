@@ -279,7 +279,13 @@ func (s *Service) resolveCallerSystem(ctx context.Context) (uuid.UUID, string, *
 
 	var name string
 	err = s.pool.QueryRow(ctx,
-		`SELECT name FROM system WHERE id = $1 AND active = true`, systemID,
+		`SELECT e.properties->>'name'
+		 FROM entity e
+		 JOIN entity_type_definition t ON t.id = e.type_id
+		 WHERE e.id = $1
+		   AND t.type_name = 'System'
+		   AND COALESCE((e.properties->>'active')::bool, true) = true`,
+		systemID,
 	).Scan(&name)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
