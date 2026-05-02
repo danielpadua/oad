@@ -357,41 +357,58 @@ A new IdP being connected may already contain thousands of users. SCIM has no "g
 |---|---|
 | Okta | On creation of an OAD application + push-provisioning, Okta enumerates all assigned users and POSTs each. |
 | Azure AD | Similar — initial cycle pushes everything assigned. |
-| Keycloak | `scim-for-keycloak` plugin (community); coverage uneven. May require admin-triggered "full sync". |
-| Dex | No SCIM client. **Cannot ingest from Dex via SCIM.** |
+| Authentik | On creation of an Application + SCIM Provider, Authentik enumerates assigned users and groups and POSTs each. Subsequent changes are pushed incrementally via PATCH. |
+| Keycloak | `scim-for-keycloak` is a community plugin with uneven coverage. **Not adopted by OAD** — Keycloak in the dev stack emits OIDC only. |
 
-**Decision recorded:** Dex users in the dev stack are NOT a SCIM ingest case. The dev stack uses the **fake SCIM client** (§12) to simulate provider provisioning.
+**Decision recorded:** the dev stack uses **Authentik** (in `deployments/multi-idp/`) as the SCIM source. Keycloak in the same stack emits OIDC only and is the JWT issuer for the management plane.
 
 ---
 
 ## 12. Local development and test strategy
 
-### 12.1 Fake SCIM client
+### 12.1 Multi-IdP dev stack
 
-A small Go binary at `deployments/scim-fakeclient/` that pushes users/groups to OAD's SCIM endpoint based on a YAML fixture. Used for:
+The `deployments/multi-idp/` stack runs two real IdPs side by side:
 
-- **Local dev** — simulate Keycloak-as-SCIM-provisioner without configuring the plugin.
-- **E2E tests** — deterministic provisioning of test fixtures before assertions.
+- **Keycloak** — OIDC provider for the management plane (issues JWTs that authenticate users into OAD).
+- **Authentik** — second IdP that demonstrates SCIM ingest. Authentik manages its own user pool and provisions Users / Groups to OAD via its SCIM Provider.
+
+Authentik components added to the compose stack:
+
+- `authentik-server` — HTTP frontend (admin UI + OIDC + SCIM trigger).
+- `authentik-worker` — async task runner (handles SCIM provisioning).
+- `authentik-redis` — task broker.
+- `authentik-postgres` — kept separate from OAD's Postgres for cleanliness.
+
+Initial state is materialized from a blueprint at `deployments/multi-idp/authentik/blueprints/oad.yaml`, applied automatically on first start. The blueprint pre-creates:
+
+- Users (admin/editor/viewer/pdp, mirroring the Keycloak realm fixtures).
+- Groups (`oad-admin`, `oad-editor`, `oad-viewer`) bound to the corresponding users.
+- An Application + SCIM Provider targeting `http://api:8080/scim/v2`, with the bearer token read from `OAD_SCIM_TOKEN_AUTHENTIK` so the same value is shared by both ends.
+
+Result: `make dev STACK=multi-idp` brings up a stack where Authentik provisions its user pool into OAD via SCIM on first start, exercising the real ingest path end-to-end. No fake client is involved in the dev experience.
+
+### 12.2 scim-protocol-tester (test utility)
+
+A small Go binary at `deployments/scim-protocol-tester/` that issues raw SCIM 2.0 requests against the OAD endpoint based on a YAML scenario file. Used **for protocol-level tests, not for the dev stack**.
 
 ```yaml
-# deployments/scim-fakeclient/fixtures/keycloak.yaml
+# deployments/scim-protocol-tester/scenarios/patch-add-member.yaml
 target: http://localhost:8080/scim/v2
-token: env:OAD_SCIM_TOKEN_KEYCLOAK
-users:
-  - id: alice-keycloak-id
-    userName: alice@oad.dev
-    displayName: Alice
-    emails: [{value: alice@oad.dev, primary: true}]
-    active: true
-groups:
-  - id: editors-keycloak-id
-    displayName: editors
-    members: [{value: alice-keycloak-id}]
+token: env:OAD_SCIM_TOKEN_TEST
+scenario:
+  - method: POST
+    path: /Users
+    body: { ... }
+  - method: POST
+    path: /Groups
+    body: { ... }
+  - method: PATCH
+    path: /Groups/{groupId}
+    body: { Operations: [...] }
 ```
 
-### 12.2 Compose integration
-
-The `deployments/multi-idp/docker-compose.yml` gains an optional `scim-fakeclient` service that runs once on `make dev STACK=multi-idp` and exits, pre-populating users that match the Keycloak realm fixtures.
+Scope: covers spec edge cases that are awkward or impossible to drive through Authentik's UI / API — malformed PATCH paths, ETag conflicts, attribute filter combinations, ordering anomalies, deliberately invalid payloads. Runs only in the integration test suite, not on `make dev`.
 
 ### 12.3 Unit tests
 
@@ -402,8 +419,8 @@ The `deployments/multi-idp/docker-compose.yml` gains an optional `scim-fakeclien
 ### 12.4 Integration tests
 
 - Real PostgreSQL service (already in CI).
-- Fake SCIM client run against an OAD test instance, asserting that resulting entities, relations, and external identities match expected.
-- Round-trip: POST → GET → PATCH → GET → DELETE for both Users and Groups.
+- **Authentik-driven E2E**: spin up the `multi-idp` stack in CI, trigger a SCIM provisioning sync via Authentik's admin API, assert resulting `entity` / `relation` / `entity_external_identity` rows in OAD's Postgres. Validates the full real-IdP path.
+- **`scim-protocol-tester` scenarios**: run against an OAD test instance for spec-edge coverage independent of any IdP. Round-trip POST → GET → PATCH → GET → DELETE for both Users and Groups, plus deliberate edge-case scenarios.
 
 ---
 
@@ -456,7 +473,7 @@ Each sub-phase is independently mergeable. After B.5 the system is production-vi
 | # | Question | Default if unanswered |
 |---|---|---|
 | Q1 | Use `github.com/elimity-com/scim` or implement subset by hand? | **Resolved:** hand-rolled subset (see §7.2). |
-| Q2 | Should Dex deployments get a workaround (admin endpoint to create User entities directly)? | Yes, but defer to Phase D. |
+| Q2 | Should Dex-style IdPs without SCIM get a workaround (admin endpoint to create User entities directly)? | Yes, but defer to Phase D. The dev stack itself no longer uses Dex — Authentik replaces it (see §12.1). |
 | Q3 | Do we need a `/scim/v2/Bulk` endpoint? | No. Defer until requested. |
 | Q4 | How do SCIM-driven changes propagate via webhooks to downstream consumers? | **Resolved:** deferred (see §1.2). The current per-system subscription model does not fit global SCIM events; a filter-based subscription redesign will happen when a real consumer drives the requirement. |
 | Q5 | Should the IdP-group-to-`oad:*` mapping be configurable in YAML for ops convenience? | Not initially. Admin UI is sufficient and keeps configuration centralized. |
@@ -469,3 +486,4 @@ Each sub-phase is independently mergeable. After B.5 the system is production-vi
 |---|---|---|
 | 0.1 | 2026-04-28 | Initial draft. |
 | 0.2 | 2026-04-28 | Rename `is_system` → `is_builtin`. Add `Permission` built-in type and scoping model (§3.5.1). Add Permission provisioning (§3.5.2) and IGA integration future (§3.5.3). Resolve Q1 (hand-rolled parser, §7.2). Resolve Q4 (defer SCIM webhooks, §1.2). |
+| 0.3 | 2026-04-29 | Replace Dex+glauth with Authentik in `deployments/multi-idp/` (§11, §12.1). Reposition fake client as `scim-protocol-tester` test utility (§12.2). Update Q2 to reflect Authentik adoption. |
