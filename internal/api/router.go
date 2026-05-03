@@ -16,6 +16,8 @@ import (
 	"github.com/danielpadua/oad/internal/api/middleware"
 	"github.com/danielpadua/oad/internal/auth"
 	"github.com/danielpadua/oad/internal/config"
+	scimauth "github.com/danielpadua/oad/internal/scim/auth"
+	scimhandler "github.com/danielpadua/oad/internal/scim/handler"
 )
 
 // Dependencies holds all external dependencies injected into the HTTP layer.
@@ -53,6 +55,9 @@ type Dependencies struct {
 	// Frontend bootstrap — OIDC configuration
 	ConfigHandler *handler.ConfigHandler
 
+	// Phase 9.B — SCIM tenant token registry (nil disables /scim/v2 mount).
+	SCIMRegistry *scimauth.Registry
+
 	// Embedded Management UI — SPA catch-all (nil disables the UI).
 	WebUIHandler http.Handler
 }
@@ -87,6 +92,13 @@ func NewRouter(deps Dependencies) http.Handler {
 	r.Get("/health", healthHandler.Get)
 	r.Get("/metrics", promhttp.Handler().ServeHTTP)
 	r.Get("/config.json", deps.ConfigHandler.Get)
+
+	// /scim/v2 — SCIM 2.0 ingest surface (Phase 9.B). Discovery endpoints
+	// are unauthenticated; resource endpoints (Users/Groups, Phase 9.B.3+)
+	// will use the SCIM tenant token registry for bearer auth.
+	if deps.SCIMRegistry != nil {
+		scimhandler.Mount(r, deps.SCIMRegistry)
+	}
 
 	// /api/v1 — all domain endpoints require authentication.
 	r.Route("/api/v1", func(r chi.Router) {

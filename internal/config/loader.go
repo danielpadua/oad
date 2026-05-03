@@ -89,6 +89,10 @@ func applyFile(cfg *Config, fc *fileConfig) {
 				ClientID:  fp.WebUI.ClientID,
 				Scope:     fp.WebUI.Scope,
 			},
+			SCIM: ProviderSCIM{
+				Enabled: fp.SCIM.Enabled,
+				Token:   resolveSecretRef(fp.SCIM.Token),
+			},
 		})
 	}
 	if fc.WebUI.RedirectURI != "" {
@@ -208,6 +212,18 @@ func applyWebUIEnv(cfg *Config) {
 	if v := os.Getenv("OAD_WEBUI_POST_LOGOUT_URI"); v != "" {
 		cfg.WebUI.PostLogoutURI = v
 	}
+}
+
+// resolveSecretRef resolves indirection in secret-bearing config values.
+// Supported prefixes:
+//   - "env:VAR_NAME"  → value of the named environment variable
+//
+// Plain strings (no prefix) are returned as-is. Empty input returns "".
+func resolveSecretRef(raw string) string {
+	if name, ok := strings.CutPrefix(raw, "env:"); ok {
+		return os.Getenv(name)
+	}
+	return raw
 }
 
 func anyNonEmpty(values ...string) bool {

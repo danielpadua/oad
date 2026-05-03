@@ -36,11 +36,24 @@ type AuthConfig struct {
 // ProviderConfig represents a single trusted Identity Provider.
 // Backend carries the fields used by the API to validate tokens.
 // WebUI carries the fields served to the frontend via /config.json.
+// SCIM carries the tenant token used by the IdP to authenticate against
+// OAD's /scim/v2 endpoints (Phase 9.B).
 type ProviderConfig struct {
 	Name        string
 	DisplayName string
 	Backend     ProviderBackend
 	WebUI       ProviderWebUI
+	SCIM        ProviderSCIM
+}
+
+// ProviderSCIM holds the SCIM ingest configuration for one provider.
+// Token is the resolved plaintext bearer token; the loader resolves
+// `env:VAR_NAME` references before returning. The token is consumed once
+// at startup to populate the SCIM auth registry; it is not retained on
+// the Config struct after that point in production paths.
+type ProviderSCIM struct {
+	Enabled bool
+	Token   string
 }
 
 type ProviderBackend struct {

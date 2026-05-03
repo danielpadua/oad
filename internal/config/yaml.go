@@ -41,6 +41,12 @@ type fileProviderConfig struct {
 	DisplayName string              `yaml:"display_name"`
 	Backend     fileProviderBackend `yaml:"backend"`
 	WebUI       fileProviderWebUI   `yaml:"webui"`
+	SCIM        fileProviderSCIM    `yaml:"scim"`
+}
+
+type fileProviderSCIM struct {
+	Enabled bool   `yaml:"enabled"`
+	Token   string `yaml:"token"` // accepts plain string or "env:OAD_SCIM_TOKEN_FOO"
 }
 
 type fileProviderBackend struct {

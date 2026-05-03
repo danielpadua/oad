@@ -24,6 +24,7 @@ import (
 	"github.com/danielpadua/oad/internal/overlayschema"
 	"github.com/danielpadua/oad/internal/relation"
 	"github.com/danielpadua/oad/internal/retrieval"
+	scimauth "github.com/danielpadua/oad/internal/scim/auth"
 	"github.com/danielpadua/oad/internal/system"
 	"github.com/danielpadua/oad/internal/webhook"
 	"github.com/danielpadua/oad/internal/webui"
@@ -137,6 +138,11 @@ func runServer() error {
 	webhookSvc := webhook.NewService(pool, webhookRepo, auditSvc)
 	webhookDispatcher := webhook.NewDispatcher(pool, webhookRepo, slog.Default())
 
+	scimRegistry, err := buildSCIMRegistry(cfg.Auth.Providers)
+	if err != nil {
+		return fmt.Errorf("initializing SCIM registry: %w", err)
+	}
+
 	router := api.NewRouter(api.Dependencies{
 		DB:       pool,
 		Config:   cfg,
@@ -160,6 +166,8 @@ func runServer() error {
 		StatsHandler: handler.NewStatsHandler(pool),
 
 		ConfigHandler: handler.NewConfigHandler(cfg),
+
+		SCIMRegistry: scimRegistry,
 
 		WebUIHandler: func() http.Handler {
 			h, err := webui.NewHandler()
@@ -213,6 +221,32 @@ func runServer() error {
 	slog.Info("server stopped")
 
 	return nil
+}
+
+// buildSCIMRegistry instantiates the SCIM tenant token registry from
+// configured providers. Providers without scim.enabled or with an empty
+// token are skipped (the latter logs a warning — usually means a missing
+// env var). Duplicate tokens across providers fail startup.
+func buildSCIMRegistry(providers []config.ProviderConfig) (*scimauth.Registry, error) {
+	registry := scimauth.NewRegistry()
+	for _, p := range providers {
+		if !p.SCIM.Enabled {
+			continue
+		}
+		if p.SCIM.Token == "" {
+			slog.Warn("SCIM enabled but token resolved to empty; skipping registration",
+				"provider", p.Name,
+			)
+			continue
+		}
+		if err := registry.Register(p.Name, p.SCIM.Token); err != nil {
+			return nil, fmt.Errorf("registering SCIM token for provider %q: %w", p.Name, err)
+		}
+	}
+	if registry.Size() > 0 {
+		slog.Info("SCIM tenant tokens registered", "count", registry.Size())
+	}
+	return registry, nil
 }
 
 func buildJWTAuthenticator(ctx context.Context, providers []config.ProviderConfig) (*auth.JWTAuthenticator, error) {

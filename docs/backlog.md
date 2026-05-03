@@ -165,7 +165,7 @@
 
 > Sub-phases follow [scim-ingest.md §15](design/scim-ingest.md#15-phased-implementation-breakdown). B.1 (schema foundation) was delivered as 9.A.1 above and is not repeated here.
 
-94. [ ] B.2 — Tenant token authentication, SCIM router mount at `/scim/v2`, discovery endpoints (`/ServiceProviderConfig`, `/Schemas`, `/ResourceTypes`)
+94. [x] B.2 — Tenant token authentication, SCIM router mount at `/scim/v2`, discovery endpoints (`/ServiceProviderConfig`, `/Schemas`, `/ResourceTypes`)
 95. [ ] B.3 — Users CRUD: endpoints, mapper (SCIM `User` ↔ entity), filter subset (eq/ne/co/sw/ew/pr/and/or), pagination
 96. [ ] B.4 — Groups CRUD: endpoints, mapper (SCIM `Group` ↔ entity + relations), member resolution via `entity_external_identity`
 97. [ ] B.5 — PATCH support for Users and Groups (documented subset of paths from §7.1)

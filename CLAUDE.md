@@ -290,11 +290,16 @@ Role-based authorization is enforced at two levels:
 
 # API routes (current)
 
-| Method | Path       | Auth | Description               |
-|--------|------------|------|---------------------------|
-| GET    | `/health`  | No   | Health check (DB + app)   |
-| GET    | `/metrics` | No   | Prometheus metrics        |
-| *      | `/api/v1/` | Yes  | Protected prefix (Phase 2+: domain routes) |
+| Method | Path                              | Auth                  | Description                                    |
+|--------|-----------------------------------|-----------------------|------------------------------------------------|
+| GET    | `/health`                         | No                    | Health check (DB + app)                        |
+| GET    | `/metrics`                        | No                    | Prometheus metrics                             |
+| GET    | `/config.json`                    | No                    | Frontend OIDC configuration                    |
+| GET    | `/scim/v2/ServiceProviderConfig`  | No                    | SCIM 2.0 capability advertisement (Phase 9.B)  |
+| GET    | `/scim/v2/Schemas`                | No                    | SCIM 2.0 schema introspection (empty in 9.B.2) |
+| GET    | `/scim/v2/ResourceTypes`          | No                    | SCIM 2.0 resource type listing (empty in 9.B.2)|
+| *      | `/scim/v2/Users`, `/Groups`       | SCIM tenant token     | Phase 9.B.3 / 9.B.4 — not yet registered       |
+| *      | `/api/v1/`                        | Yes (JWT / mTLS)      | Protected prefix (Phase 2+: domain routes)     |
 
 # Database schema highlights
 
