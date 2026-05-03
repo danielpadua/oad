@@ -34,8 +34,10 @@ func Mount(r chi.Router, registry *auth.Registry, h Handlers) {
 		if h.Users != nil {
 			r.Group(func(r chi.Router) {
 				r.Use(auth.Authenticate(registry))
+				r.Get("/Users", h.Users.List)
 				r.Post("/Users", h.Users.Create)
 				r.Get("/Users/{id}", h.Users.GetByID)
+				r.Put("/Users/{id}", h.Users.Replace)
 				r.Delete("/Users/{id}", h.Users.Delete)
 			})
 		}

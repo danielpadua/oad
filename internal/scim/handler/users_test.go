@@ -23,9 +23,11 @@ import (
 // Unused methods of the interface return ErrNotImplemented to surface
 // accidental usage in tests that didn't set them up.
 type mockUsersService struct {
-	createFn func(ctx context.Context, providerName string, u users.User) (*users.User, error)
-	getFn    func(ctx context.Context, providerName string, id uuid.UUID) (*users.User, error)
-	deleteFn func(ctx context.Context, providerName string, id uuid.UUID) error
+	createFn  func(ctx context.Context, providerName string, u users.User) (*users.User, error)
+	getFn     func(ctx context.Context, providerName string, id uuid.UUID) (*users.User, error)
+	listFn    func(ctx context.Context, providerName, filterStr string, offset, limit int) (*users.ListResult, error)
+	replaceFn func(ctx context.Context, providerName string, id uuid.UUID, u users.User) (*users.User, error)
+	deleteFn  func(ctx context.Context, providerName string, id uuid.UUID) error
 }
 
 var errNotImplemented = errors.New("mock: not implemented")
@@ -42,6 +44,20 @@ func (m *mockUsersService) GetByEntityID(ctx context.Context, providerName strin
 		return nil, errNotImplemented
 	}
 	return m.getFn(ctx, providerName, id)
+}
+
+func (m *mockUsersService) List(ctx context.Context, providerName, filterStr string, offset, limit int) (*users.ListResult, error) {
+	if m.listFn == nil {
+		return nil, errNotImplemented
+	}
+	return m.listFn(ctx, providerName, filterStr, offset, limit)
+}
+
+func (m *mockUsersService) Replace(ctx context.Context, providerName string, id uuid.UUID, u users.User) (*users.User, error) {
+	if m.replaceFn == nil {
+		return nil, errNotImplemented
+	}
+	return m.replaceFn(ctx, providerName, id, u)
 }
 
 func (m *mockUsersService) Delete(ctx context.Context, providerName string, id uuid.UUID) error {
@@ -297,6 +313,180 @@ func TestUsers_Delete_Success(t *testing.T) {
 	body, _ := io.ReadAll(rr.Body)
 	if len(body) != 0 {
 		t.Errorf("expected empty body, got %q", body)
+	}
+}
+
+func TestUsers_List_Success(t *testing.T) {
+	t.Parallel()
+
+	id := uuid.New()
+	svc := &mockUsersService{
+		listFn: func(_ context.Context, providerName, filterStr string, offset, limit int) (*users.ListResult, error) {
+			if providerName != "keycloak" {
+				t.Errorf("providerName = %q, want keycloak", providerName)
+			}
+			if filterStr != `userName eq "alice"` {
+				t.Errorf("filterStr = %q, want filter", filterStr)
+			}
+			if offset != 0 || limit != 50 {
+				t.Errorf("offset/limit = %d/%d, want 0/50", offset, limit)
+			}
+			return &users.ListResult{Users: []*users.User{sampleStored(id)}, Total: 1}, nil
+		},
+	}
+	r, token := newAuthRouter(t, svc)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet,
+		`/scim/v2/Users?filter=userName+eq+%22alice%22`, http.NoBody)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+	var body map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["totalResults"].(float64) != 1 {
+		t.Errorf("totalResults = %v, want 1", body["totalResults"])
+	}
+	if body["startIndex"].(float64) != 1 {
+		t.Errorf("startIndex = %v, want 1", body["startIndex"])
+	}
+	if body["itemsPerPage"].(float64) != 1 {
+		t.Errorf("itemsPerPage = %v, want 1", body["itemsPerPage"])
+	}
+}
+
+func TestUsers_List_PaginationClamps(t *testing.T) {
+	t.Parallel()
+
+	var gotOffset, gotLimit int
+	svc := &mockUsersService{
+		listFn: func(_ context.Context, _, _ string, offset, limit int) (*users.ListResult, error) {
+			gotOffset, gotLimit = offset, limit
+			return &users.ListResult{Total: 0}, nil
+		},
+	}
+	r, token := newAuthRouter(t, svc)
+
+	// startIndex=10 → offset=9; count=500 → clamp to 200.
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet,
+		`/scim/v2/Users?startIndex=10&count=500`, http.NoBody)
+	req.Header.Set("Authorization", "Bearer "+token)
+	r.ServeHTTP(httptest.NewRecorder(), req)
+	if gotOffset != 9 || gotLimit != 200 {
+		t.Errorf("offset/limit = %d/%d, want 9/200", gotOffset, gotLimit)
+	}
+
+	// Negative startIndex → clamp to 1 → offset=0; missing count → default 50.
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodGet,
+		`/scim/v2/Users?startIndex=-5`, http.NoBody)
+	req.Header.Set("Authorization", "Bearer "+token)
+	r.ServeHTTP(httptest.NewRecorder(), req)
+	if gotOffset != 0 || gotLimit != 50 {
+		t.Errorf("offset/limit = %d/%d, want 0/50", gotOffset, gotLimit)
+	}
+}
+
+func TestUsers_List_InvalidFilter(t *testing.T) {
+	t.Parallel()
+
+	svc := &mockUsersService{
+		listFn: func(context.Context, string, string, int, int) (*users.ListResult, error) {
+			return nil, users.ErrInvalidFilter
+		},
+	}
+	r, token := newAuthRouter(t, svc)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet,
+		`/scim/v2/Users?filter=garbage`, http.NoBody)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rr.Code)
+	}
+	var body map[string]any
+	_ = json.NewDecoder(rr.Body).Decode(&body)
+	if body["scimType"] != "invalidFilter" {
+		t.Errorf("scimType = %v, want invalidFilter", body["scimType"])
+	}
+}
+
+func TestUsers_Replace_Success(t *testing.T) {
+	t.Parallel()
+
+	id := uuid.New()
+	svc := &mockUsersService{
+		replaceFn: func(_ context.Context, providerName string, gotID uuid.UUID, in users.User) (*users.User, error) {
+			if providerName != "keycloak" {
+				t.Errorf("providerName = %q, want keycloak", providerName)
+			}
+			if gotID != id {
+				t.Errorf("id = %v, want %v", gotID, id)
+			}
+			if in.UserName != "alice2" {
+				t.Errorf("UserName = %q, want alice2", in.UserName)
+			}
+			return sampleStored(id), nil
+		},
+	}
+	r, token := newAuthRouter(t, svc)
+
+	body := strings.NewReader(`{"userName":"alice2","active":true}`)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/scim/v2/Users/"+id.String(), body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+	if rr.Header().Get("ETag") == "" {
+		t.Errorf("missing ETag header on PUT response")
+	}
+}
+
+func TestUsers_Replace_BadUUID(t *testing.T) {
+	t.Parallel()
+
+	svc := &mockUsersService{}
+	r, token := newAuthRouter(t, svc)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut,
+		"/scim/v2/Users/not-a-uuid", strings.NewReader(`{"userName":"x"}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rr.Code)
+	}
+}
+
+func TestUsers_Replace_NotFound(t *testing.T) {
+	t.Parallel()
+
+	id := uuid.New()
+	svc := &mockUsersService{
+		replaceFn: func(context.Context, string, uuid.UUID, users.User) (*users.User, error) {
+			return nil, users.ErrNotFound
+		},
+	}
+	r, token := newAuthRouter(t, svc)
+
+	body := strings.NewReader(`{"userName":"alice"}`)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/scim/v2/Users/"+id.String(), body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rr.Code)
 	}
 }
 

@@ -19,4 +19,8 @@ var (
 	// create. OAD requires it so it can link the SCIM resource to the IdP's
 	// stable identifier. Translated to 400.
 	ErrExternalIDRequired = errors.New("scim externalId is required on create")
+
+	// ErrInvalidFilter wraps parser/translator errors so the handler can
+	// translate them to RFC 7644 §3.4.2.2 invalidFilter responses.
+	ErrInvalidFilter = errors.New("scim filter is invalid")
 )

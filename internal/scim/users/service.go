@@ -3,12 +3,14 @@ package users
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/danielpadua/oad/internal/audit"
+	"github.com/danielpadua/oad/internal/scim/parser"
 )
 
 // Service orchestrates SCIM User operations. Each method runs inside its
@@ -82,6 +84,107 @@ func (s *Service) GetByEntityID(ctx context.Context, providerName string, id uui
 		return nil, err
 	}
 	out := FromStored(*stored)
+	return &out, nil
+}
+
+// ListResult is the payload returned by Service.List: a page of users
+// rendered as SCIM Users plus the total count for pagination.
+type ListResult struct {
+	Users []*User
+	Total int
+}
+
+// List returns a paginated view of users belonging to the calling provider.
+// filterStr is a SCIM filter expression per RFC 7644 §3.4.2.2 (subset
+// supported — see parser package). Empty filterStr returns all users.
+//
+// offset is 0-based (callers translate startIndex 1-based to offset = N-1).
+// limit > 200 is the caller's responsibility to clamp; this method honors
+// whatever it is given.
+func (s *Service) List(ctx context.Context, providerName, filterStr string, offset, limit int) (*ListResult, error) {
+	var (
+		filterSQL  string
+		filterArgs []any
+	)
+	if filterStr != "" {
+		expr, err := parser.Parse(filterStr)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidFilter, err)
+		}
+		filterSQL, filterArgs, err = FilterToSQL(expr)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidFilter, err)
+		}
+	}
+
+	stored, total, err := s.repo.List(ctx, s.pool, providerName, filterSQL, filterArgs, offset, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	users := make([]*User, len(stored))
+	for i, su := range stored {
+		u := FromStored(*su)
+		users[i] = &u
+	}
+	return &ListResult{Users: users, Total: total}, nil
+}
+
+// Replace overwrites the user's stored properties from the inbound SCIM
+// payload (PUT semantics per RFC 7644 §3.5.1). The (provider,
+// external_subject) link and the entity_id are preserved; only the
+// properties JSONB is rewritten.
+func (s *Service) Replace(ctx context.Context, providerName string, id uuid.UUID, in User) (*User, error) {
+	if in.UserName == "" {
+		return nil, ErrUserNameRequired
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op
+
+	before, err := s.repo.GetByEntityID(ctx, tx, providerName, id)
+	if err != nil {
+		return nil, err
+	}
+
+	newProps := ToProperties(in)
+	updatedAt, err := s.repo.Replace(ctx, tx, providerName, id, newProps)
+	if err != nil {
+		// ErrNotFound here would only happen on a concurrent delete
+		// between the GetByEntityID and Replace calls.
+		if errors.Is(err, ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	beforeJSON, _ := json.Marshal(before.Properties)
+	afterJSON, _ := json.Marshal(newProps)
+	if err := s.audit.Write(ctx, tx, audit.Entry{
+		Actor:        scimActor(providerName),
+		Operation:    audit.OpUpdate,
+		ResourceType: "user",
+		ResourceID:   id,
+		BeforeValue:  beforeJSON,
+		AfterValue:   afterJSON,
+	}); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+
+	out := FromStored(StoredUser{
+		EntityID:        id,
+		Properties:      newProps,
+		ExternalSubject: before.ExternalSubject,
+		CreatedAt:       before.CreatedAt,
+		UpdatedAt:       updatedAt,
+	})
 	return &out, nil
 }
 
