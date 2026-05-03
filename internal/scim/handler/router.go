@@ -6,31 +6,38 @@ import (
 	"github.com/danielpadua/oad/internal/scim/auth"
 )
 
+// Handlers groups the resource-specific SCIM handlers passed to Mount.
+// Discovery is constructed by Mount when nil; resource handlers (Users,
+// future Groups) are optional — when omitted the corresponding route
+// group is not registered and clients receive 404 from Chi's default.
+type Handlers struct {
+	Discovery *DiscoveryHandler
+	Users     *UsersHandler
+}
+
 // Mount attaches the SCIM 2.0 endpoints to r at the /scim/v2 prefix.
 //
 // Discovery endpoints (ServiceProviderConfig, Schemas, ResourceTypes) are
-// unauthenticated per RFC 7644 §4.
-//
-// The registry argument is consumed by the auth middleware that protects
-// resource endpoints. Phase 9.B.2 registers no resource endpoints, so the
-// registry is currently used only to keep the wiring symmetric with the
-// rest of the codebase: B.3 (Users) attaches the auth middleware to the
-// /Users sub-route group inside this same Mount call.
-func Mount(r chi.Router, registry *auth.Registry) {
-	disc := NewDiscoveryHandler()
+// unauthenticated per RFC 7644 §4. Resource endpoints (Users, future
+// Groups) sit inside an authenticated group that consults the SCIM tenant
+// token registry on every request.
+func Mount(r chi.Router, registry *auth.Registry, h Handlers) {
+	if h.Discovery == nil {
+		h.Discovery = NewDiscoveryHandler()
+	}
 
 	r.Route("/scim/v2", func(r chi.Router) {
-		r.Get("/ServiceProviderConfig", disc.ServiceProviderConfig)
-		r.Get("/Schemas", disc.Schemas)
-		r.Get("/ResourceTypes", disc.ResourceTypes)
+		r.Get("/ServiceProviderConfig", h.Discovery.ServiceProviderConfig)
+		r.Get("/Schemas", h.Discovery.Schemas)
+		r.Get("/ResourceTypes", h.Discovery.ResourceTypes)
 
-		// Resource endpoints (Users, Groups) attach inside an authenticated
-		// group in Phase 9.B.3 / 9.B.4:
-		//
-		//   r.Group(func(r chi.Router) {
-		//       r.Use(auth.Authenticate(registry))
-		//       // /Users, /Groups routes
-		//   })
-		_ = registry
+		if h.Users != nil {
+			r.Group(func(r chi.Router) {
+				r.Use(auth.Authenticate(registry))
+				r.Post("/Users", h.Users.Create)
+				r.Get("/Users/{id}", h.Users.GetByID)
+				r.Delete("/Users/{id}", h.Users.Delete)
+			})
+		}
 	})
 }

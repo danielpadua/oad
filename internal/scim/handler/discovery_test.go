@@ -16,7 +16,7 @@ const scimContentType = "application/scim+json"
 
 func newTestRouter() chi.Router {
 	r := chi.NewRouter()
-	handler.Mount(r, auth.NewRegistry())
+	handler.Mount(r, auth.NewRegistry(), handler.Handlers{})
 	return r
 }
 
@@ -114,50 +114,64 @@ func TestServiceProviderConfig_Meta(t *testing.T) {
 	}
 }
 
-func TestDiscovery_EmptyListEndpoints(t *testing.T) {
+func TestDiscovery_SchemasContainsUser(t *testing.T) {
 	t.Parallel()
 
 	r := newTestRouter()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/scim/v2/Schemas", http.NoBody)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
 
-	cases := []struct {
-		name string
-		path string
-	}{
-		{"Schemas", "/scim/v2/Schemas"},
-		{"ResourceTypes", "/scim/v2/ResourceTypes"},
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tc.path, http.NoBody)
-			rr := httptest.NewRecorder()
-			r.ServeHTTP(rr, req)
+	var body map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["totalResults"].(float64) != 1 {
+		t.Errorf("totalResults = %v, want 1", body["totalResults"])
+	}
+	resources, _ := body["Resources"].([]any)
+	if len(resources) != 1 {
+		t.Fatalf("Resources len = %d, want 1", len(resources))
+	}
+	user, _ := resources[0].(map[string]any)
+	if user["id"] != "urn:ietf:params:scim:schemas:core:2.0:User" {
+		t.Errorf("User schema id = %v, want SCIM User URN", user["id"])
+	}
+	if user["name"] != "User" {
+		t.Errorf("User schema name = %v, want User", user["name"])
+	}
+}
 
-			if rr.Code != http.StatusOK {
-				t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
-			}
-			if got := rr.Header().Get("Content-Type"); got != scimContentType {
-				t.Errorf("Content-Type = %q, want %q", got, scimContentType)
-			}
+func TestDiscovery_ResourceTypesContainsUser(t *testing.T) {
+	t.Parallel()
 
-			var body map[string]any
-			if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
-				t.Fatalf("decode body: %v", err)
-			}
+	r := newTestRouter()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/scim/v2/ResourceTypes", http.NoBody)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
 
-			schemas, _ := body["schemas"].([]any)
-			if len(schemas) != 1 || schemas[0] != "urn:ietf:params:scim:api:messages:2.0:ListResponse" {
-				t.Errorf("schemas = %v, want SCIM ListResponse URN", schemas)
-			}
-			if body["totalResults"].(float64) != 0 {
-				t.Errorf("totalResults = %v, want 0", body["totalResults"])
-			}
-			resources, _ := body["Resources"].([]any)
-			if len(resources) != 0 {
-				t.Errorf("Resources len = %d, want 0", len(resources))
-			}
-		})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["totalResults"].(float64) != 1 {
+		t.Errorf("totalResults = %v, want 1", body["totalResults"])
+	}
+	resources, _ := body["Resources"].([]any)
+	if len(resources) != 1 {
+		t.Fatalf("Resources len = %d, want 1", len(resources))
+	}
+	rt, _ := resources[0].(map[string]any)
+	if rt["id"] != "User" || rt["endpoint"] != "/Users" {
+		t.Errorf("ResourceType = %v, want id=User endpoint=/Users", rt)
 	}
 }
 

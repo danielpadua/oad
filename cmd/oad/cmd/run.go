@@ -25,6 +25,8 @@ import (
 	"github.com/danielpadua/oad/internal/relation"
 	"github.com/danielpadua/oad/internal/retrieval"
 	scimauth "github.com/danielpadua/oad/internal/scim/auth"
+	scimhandler "github.com/danielpadua/oad/internal/scim/handler"
+	scimusers "github.com/danielpadua/oad/internal/scim/users"
 	"github.com/danielpadua/oad/internal/system"
 	"github.com/danielpadua/oad/internal/webhook"
 	"github.com/danielpadua/oad/internal/webui"
@@ -143,6 +145,10 @@ func runServer() error {
 		return fmt.Errorf("initializing SCIM registry: %w", err)
 	}
 
+	scimUsersRepo := scimusers.NewRepository()
+	scimUsersSvc := scimusers.NewService(pool, scimUsersRepo, auditSvc)
+	scimUsersHandler := scimhandler.NewUsersHandler(scimUsersSvc)
+
 	router := api.NewRouter(api.Dependencies{
 		DB:       pool,
 		Config:   cfg,
@@ -167,7 +173,8 @@ func runServer() error {
 
 		ConfigHandler: handler.NewConfigHandler(cfg),
 
-		SCIMRegistry: scimRegistry,
+		SCIMRegistry:     scimRegistry,
+		SCIMUsersHandler: scimUsersHandler,
 
 		WebUIHandler: func() http.Handler {
 			h, err := webui.NewHandler()

@@ -13,6 +13,7 @@ import (
 	"net/http"
 
 	"github.com/danielpadua/oad/internal/scim/response"
+	"github.com/danielpadua/oad/internal/scim/schema"
 )
 
 const (
@@ -105,23 +106,25 @@ func (h *DiscoveryHandler) ServiceProviderConfig(w http.ResponseWriter, _ *http.
 }
 
 // Schemas handles GET /scim/v2/Schemas. Returns the list of schema
-// definitions the server supports. Empty until Phase 9.B.3 / 9.B.4 register
-// the User and Group schemas.
+// definitions the server supports. Phase 9.B.3 added the User schema;
+// Group will be added in 9.B.4.
 func (h *DiscoveryHandler) Schemas(w http.ResponseWriter, _ *http.Request) {
+	resources := []any{schema.User()}
 	response.WriteJSON(w, http.StatusOK, listResponse{
 		Schemas:      []string{scimURNListResponse},
-		TotalResults: 0,
-		Resources:    []any{},
+		TotalResults: len(resources),
+		Resources:    resources,
 	})
 }
 
 // ResourceTypes handles GET /scim/v2/ResourceTypes. Returns the list of
-// resource types the server supports. Empty until Phase 9.B.3 / 9.B.4
-// register User and Group.
+// resource types the server supports. Phase 9.B.3 added User; Group will
+// be added in 9.B.4.
 func (h *DiscoveryHandler) ResourceTypes(w http.ResponseWriter, _ *http.Request) {
+	resources := []any{schema.UserResourceType()}
 	response.WriteJSON(w, http.StatusOK, listResponse{
 		Schemas:      []string{scimURNListResponse},
-		TotalResults: 0,
-		Resources:    []any{},
+		TotalResults: len(resources),
+		Resources:    resources,
 	})
 }

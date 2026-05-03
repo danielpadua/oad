@@ -166,7 +166,9 @@
 > Sub-phases follow [scim-ingest.md §15](design/scim-ingest.md#15-phased-implementation-breakdown). B.1 (schema foundation) was delivered as 9.A.1 above and is not repeated here.
 
 94. [x] B.2 — Tenant token authentication, SCIM router mount at `/scim/v2`, discovery endpoints (`/ServiceProviderConfig`, `/Schemas`, `/ResourceTypes`)
-95. [ ] B.3 — Users CRUD: endpoints, mapper (SCIM `User` ↔ entity), filter subset (eq/ne/co/sw/ew/pr/and/or), pagination
+95. Users CRUD — split into B.3.a and B.3.b for review hygiene:
+    - [x] **B.3.a** — POST/GET/DELETE `/scim/v2/Users`, mapper (SCIM `User` ↔ entity + entity_external_identity), schema/ResourceType registered in discovery, auth middleware attached to `/Users` route group
+    - [ ] **B.3.b** — LIST `/scim/v2/Users` with hand-rolled filter parser (eq/ne/co/sw/ew/pr/and/or), pagination, PUT (replace user)
 96. [ ] B.4 — Groups CRUD: endpoints, mapper (SCIM `Group` ↔ entity + relations), member resolution via `entity_external_identity`
 97. [ ] B.5 — PATCH support for Users and Groups (documented subset of paths from §7.1)
 98. [ ] B.6 — `scim-protocol-tester` utility under `deployments/scim-protocol-tester/` — YAML-scenario-driven raw SCIM client for protocol-edge tests
