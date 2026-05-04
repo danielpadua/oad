@@ -16,7 +16,8 @@ DATABASE_URL   ?= postgresql://oad:oad@localhost:5432/oad?sslmode=disable
 
 .PHONY: build web-build dev test test-cover lint setup clean \
         migrate-up migrate-down migrate-status \
-        docker-build ui-dev ui-install format format-check pre-commit help
+        docker-build ui-dev ui-install format format-check pre-commit help \
+        scim-protocol-tester
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Build
@@ -30,6 +31,11 @@ web-build:
 build: web-build
 	@mkdir -p bin
 	go build $(GO_BUILD_FLAGS) -o $(BINARY) ./cmd/oad
+
+## scim-protocol-tester: Compile the SCIM protocol tester to ./bin/scim-protocol-tester
+scim-protocol-tester:
+	@mkdir -p bin
+	go build -o bin/scim-protocol-tester ./deployments/scim-protocol-tester
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Development

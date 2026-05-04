@@ -1,0 +1,87 @@
+# Round-trip a User: create → fetch → list-by-filter → patch → replace →
+# delete. Asserts every status and the response body fields that the
+# SCIM mapper is responsible for round-tripping.
+name: users-roundtrip
+target: http://localhost:8080/scim/v2
+token: env:OAD_SCIM_TOKEN_TEST
+
+scenario:
+  - name: create user
+    method: POST
+    path: /Users
+    body:
+      schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"]
+      externalId: protocol-tester-alice
+      userName: alice@example.com
+      displayName: Alice
+      active: true
+      emails:
+        - value: alice@example.com
+          primary: true
+    expect:
+      status: 201
+      body:
+        userName: alice@example.com
+        displayName: Alice
+        active: true
+    capture:
+      userId: id
+
+  - name: get user
+    method: GET
+    path: /Users/{userId}
+    expect:
+      status: 200
+      body:
+        id: "{userId}"
+        userName: alice@example.com
+
+  - name: list users (filter on userName)
+    method: GET
+    path: /Users?filter=userName%20eq%20%22alice%40example.com%22
+    expect:
+      status: 200
+      body:
+        totalResults: 1
+        Resources:
+          - userName: alice@example.com
+
+  - name: patch displayName
+    method: PATCH
+    path: /Users/{userId}
+    body:
+      schemas: ["urn:ietf:params:scim:api:messages:2.0:PatchOp"]
+      Operations:
+        - op: replace
+          path: displayName
+          value: Alice Updated
+    expect:
+      status: 200
+      body:
+        displayName: Alice Updated
+
+  - name: replace user (PUT)
+    method: PUT
+    path: /Users/{userId}
+    body:
+      schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"]
+      userName: alice@example.com
+      displayName: Alice Replaced
+      active: false
+    expect:
+      status: 200
+      body:
+        displayName: Alice Replaced
+        active: false
+
+  - name: delete user
+    method: DELETE
+    path: /Users/{userId}
+    expect:
+      status: 204
+
+  - name: get after delete is 404
+    method: GET
+    path: /Users/{userId}
+    expect:
+      status: 404

@@ -1,0 +1,114 @@
+# Round-trip a Group with members: create users → create group with both
+# as members → fetch → patch (add/remove member, rename) → replace →
+# delete. Exercises member resolution against entity_external_identity
+# and the diff-based reconciliation in groups.Repository.Replace.
+name: groups-roundtrip
+target: http://localhost:8080/scim/v2
+token: env:OAD_SCIM_TOKEN_TEST
+
+scenario:
+  - name: create user one
+    method: POST
+    path: /Users
+    body:
+      externalId: protocol-tester-u1
+      userName: u1@example.com
+      active: true
+    expect:
+      status: 201
+    capture: { u1: id }
+
+  - name: create user two
+    method: POST
+    path: /Users
+    body:
+      externalId: protocol-tester-u2
+      userName: u2@example.com
+      active: true
+    expect:
+      status: 201
+    capture: { u2: id }
+
+  - name: create group
+    method: POST
+    path: /Groups
+    body:
+      schemas: ["urn:ietf:params:scim:schemas:core:2.0:Group"]
+      externalId: protocol-tester-eng
+      displayName: Engineering
+      members:
+        - value: "{u1}"
+        - value: "{u2}"
+    expect:
+      status: 201
+      body:
+        displayName: Engineering
+    capture: { gid: id }
+
+  - name: get group has both members
+    method: GET
+    path: /Groups/{gid}
+    expect:
+      status: 200
+      body:
+        displayName: Engineering
+        members:
+          - value: "{u1}"
+          - value: "{u2}"
+
+  - name: patch — drop u2 by value filter
+    method: PATCH
+    path: /Groups/{gid}
+    body:
+      schemas: ["urn:ietf:params:scim:api:messages:2.0:PatchOp"]
+      Operations:
+        - op: remove
+          path: members[value eq "{u2}"]
+    expect:
+      status: 200
+
+  - name: patch — rename group
+    method: PATCH
+    path: /Groups/{gid}
+    body:
+      schemas: ["urn:ietf:params:scim:api:messages:2.0:PatchOp"]
+      Operations:
+        - op: replace
+          path: displayName
+          value: Engineering Renamed
+    expect:
+      status: 200
+      body:
+        displayName: Engineering Renamed
+
+  - name: put — replace members back to both
+    method: PUT
+    path: /Groups/{gid}
+    body:
+      schemas: ["urn:ietf:params:scim:schemas:core:2.0:Group"]
+      displayName: Engineering Final
+      members:
+        - value: "{u1}"
+        - value: "{u2}"
+    expect:
+      status: 200
+      body:
+        displayName: Engineering Final
+
+  - name: delete group
+    method: DELETE
+    path: /Groups/{gid}
+    expect:
+      status: 204
+
+  - name: cleanup user one
+    method: DELETE
+    path: /Users/{u1}
+    expect:
+      status: 204
+
+  - name: cleanup user two
+    method: DELETE
+    path: /Users/{u2}
+    expect:
+      status: 204

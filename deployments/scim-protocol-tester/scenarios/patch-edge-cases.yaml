@@ -1,0 +1,75 @@
+# Edge cases the SCIM ingest design (§7.1) explicitly defines as
+# rejected. Each step provisions or targets a real resource, then
+# asserts the SCIM scimType and status match the documented behavior.
+name: patch-edge-cases
+target: http://localhost:8080/scim/v2
+token: env:OAD_SCIM_TOKEN_TEST
+
+scenario:
+  - name: bootstrap user
+    method: POST
+    path: /Users
+    body:
+      externalId: protocol-tester-edge
+      userName: edge@example.com
+      active: true
+    expect:
+      status: 201
+    capture: { uid: id }
+
+  - name: PATCH unsupported op (move)
+    method: PATCH
+    path: /Users/{uid}
+    body:
+      schemas: ["urn:ietf:params:scim:api:messages:2.0:PatchOp"]
+      Operations:
+        - op: move
+          path: displayName
+          value: nope
+    expect:
+      status: 400
+      body_contains: ["noTarget"]
+
+  - name: PATCH remove userName is forbidden
+    method: PATCH
+    path: /Users/{uid}
+    body:
+      schemas: ["urn:ietf:params:scim:api:messages:2.0:PatchOp"]
+      Operations:
+        - op: remove
+          path: userName
+    expect:
+      status: 400
+      body_contains: ["noTarget"]
+
+  - name: PATCH active with non-bool value
+    method: PATCH
+    path: /Users/{uid}
+    body:
+      schemas: ["urn:ietf:params:scim:api:messages:2.0:PatchOp"]
+      Operations:
+        - op: replace
+          path: active
+          value: not-a-bool
+    expect:
+      status: 400
+      body_contains: ["invalidValue"]
+
+  - name: PATCH unsupported sub-attr
+    method: PATCH
+    path: /Users/{uid}
+    body:
+      schemas: ["urn:ietf:params:scim:api:messages:2.0:PatchOp"]
+      Operations:
+        - op: replace
+          path: name.formatted
+          value: anything
+    expect:
+      status: 400
+      body_contains: ["noTarget"]
+
+  - name: cleanup user
+    method: DELETE
+    path: /Users/{uid}
+    expect:
+      status: 204

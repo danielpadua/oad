@@ -1,0 +1,53 @@
+# Deliberately malformed payloads — every step expects a 4xx with a
+# specific SCIM scimType. None of these create or mutate state.
+name: invalid-payloads
+target: http://localhost:8080/scim/v2
+token: env:OAD_SCIM_TOKEN_TEST
+
+scenario:
+  - name: POST user without userName
+    method: POST
+    path: /Users
+    body:
+      externalId: missing-username
+      active: true
+    expect:
+      status: 400
+      body_contains: ["invalidValue"]
+
+  - name: POST user without externalId
+    method: POST
+    path: /Users
+    body:
+      userName: noexternalid@example.com
+      active: true
+    expect:
+      status: 400
+      body_contains: ["invalidValue"]
+
+  - name: GET user with non-UUID id
+    method: GET
+    path: /Users/not-a-uuid
+    expect:
+      status: 400
+      body_contains: ["invalidValue"]
+
+  - name: list with malformed filter
+    method: GET
+    # Trailing operator with no operand — parser must reject.
+    path: /Users?filter=userName%20eq
+    expect:
+      status: 400
+      body_contains: ["invalidFilter"]
+
+  - name: POST group referencing non-existent member
+    method: POST
+    path: /Groups
+    body:
+      externalId: invalid-member-group
+      displayName: Bad
+      members:
+        - value: 00000000-0000-0000-0000-000000000000
+    expect:
+      status: 400
+      body_contains: ["invalidValue"]
