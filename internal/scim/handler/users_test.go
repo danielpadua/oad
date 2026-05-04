@@ -27,6 +27,7 @@ type mockUsersService struct {
 	getFn     func(ctx context.Context, providerName string, id uuid.UUID) (*users.User, error)
 	listFn    func(ctx context.Context, providerName, filterStr string, offset, limit int) (*users.ListResult, error)
 	replaceFn func(ctx context.Context, providerName string, id uuid.UUID, u users.User) (*users.User, error)
+	patchFn   func(ctx context.Context, providerName string, id uuid.UUID, ops []users.PatchOp) (*users.User, error)
 	deleteFn  func(ctx context.Context, providerName string, id uuid.UUID) error
 }
 
@@ -58,6 +59,13 @@ func (m *mockUsersService) Replace(ctx context.Context, providerName string, id 
 		return nil, errNotImplemented
 	}
 	return m.replaceFn(ctx, providerName, id, u)
+}
+
+func (m *mockUsersService) Patch(ctx context.Context, providerName string, id uuid.UUID, ops []users.PatchOp) (*users.User, error) {
+	if m.patchFn == nil {
+		return nil, errNotImplemented
+	}
+	return m.patchFn(ctx, providerName, id, ops)
 }
 
 func (m *mockUsersService) Delete(ctx context.Context, providerName string, id uuid.UUID) error {
@@ -487,6 +495,112 @@ func TestUsers_Replace_NotFound(t *testing.T) {
 
 	if rr.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", rr.Code)
+	}
+}
+
+func TestUsers_Patch_Success(t *testing.T) {
+	t.Parallel()
+
+	id := uuid.New()
+	var gotOps []users.PatchOp
+	svc := &mockUsersService{
+		patchFn: func(_ context.Context, providerName string, gotID uuid.UUID, ops []users.PatchOp) (*users.User, error) {
+			if providerName != "keycloak" {
+				t.Errorf("provider = %q, want keycloak", providerName)
+			}
+			if gotID != id {
+				t.Errorf("id = %s, want %s", gotID, id)
+			}
+			gotOps = ops
+			return sampleStored(id), nil
+		},
+	}
+	r, token := newAuthRouter(t, svc)
+
+	body := strings.NewReader(`{"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"replace","path":"displayName","value":"Alice Updated"},{"op":"replace","path":"active","value":false}]}`)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/scim/v2/Users/"+id.String(), body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/scim+json")
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+	if len(gotOps) != 2 {
+		t.Fatalf("Operations forwarded = %d, want 2", len(gotOps))
+	}
+	if gotOps[0].Op != "replace" || gotOps[0].Path != "displayName" {
+		t.Errorf("op[0] = %+v", gotOps[0])
+	}
+	if got := rr.Header().Get("ETag"); !strings.HasPrefix(got, `W/"`) {
+		t.Errorf("ETag = %q, want weak prefix", got)
+	}
+}
+
+func TestUsers_Patch_NoTarget(t *testing.T) {
+	t.Parallel()
+
+	id := uuid.New()
+	svc := &mockUsersService{
+		patchFn: func(context.Context, string, uuid.UUID, []users.PatchOp) (*users.User, error) {
+			return nil, users.ErrPatchNoTarget
+		},
+	}
+	r, token := newAuthRouter(t, svc)
+
+	body := strings.NewReader(`{"Operations":[{"op":"remove","path":"userName"}]}`)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/scim/v2/Users/"+id.String(), body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"noTarget"`) {
+		t.Errorf("body missing scimType=noTarget: %s", rr.Body.String())
+	}
+}
+
+func TestUsers_Patch_InvalidValue(t *testing.T) {
+	t.Parallel()
+
+	id := uuid.New()
+	svc := &mockUsersService{
+		patchFn: func(context.Context, string, uuid.UUID, []users.PatchOp) (*users.User, error) {
+			return nil, users.ErrPatchInvalidValue
+		},
+	}
+	r, token := newAuthRouter(t, svc)
+
+	body := strings.NewReader(`{"Operations":[{"op":"replace","path":"active","value":"not-a-bool"}]}`)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/scim/v2/Users/"+id.String(), body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), `"invalidValue"`) {
+		t.Errorf("body missing scimType=invalidValue: %s", rr.Body.String())
+	}
+}
+
+func TestUsers_Patch_BadUUID(t *testing.T) {
+	t.Parallel()
+
+	r, token := newAuthRouter(t, &mockUsersService{})
+
+	body := strings.NewReader(`{"Operations":[]}`)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/scim/v2/Users/not-a-uuid", body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rr.Code)
 	}
 }
 

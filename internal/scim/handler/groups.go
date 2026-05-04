@@ -22,6 +22,7 @@ type GroupsService interface {
 	GetByEntityID(ctx context.Context, providerName string, id uuid.UUID) (*groups.Group, error)
 	List(ctx context.Context, providerName, filterStr string, offset, limit int) (*groups.ListResult, error)
 	Replace(ctx context.Context, providerName string, id uuid.UUID, g groups.Group) (*groups.Group, error)
+	Patch(ctx context.Context, providerName string, id uuid.UUID, ops []groups.PatchOp) (*groups.Group, error)
 	Delete(ctx context.Context, providerName string, id uuid.UUID) error
 }
 
@@ -159,6 +160,39 @@ func (h *GroupsHandler) Replace(w http.ResponseWriter, r *http.Request) {
 	response.WriteJSON(w, http.StatusOK, updated)
 }
 
+// Patch handles PATCH /scim/v2/Groups/{id} (RFC 7644 §3.5.2). Each
+// entry in Operations[] is applied in order; the first failure aborts
+// the batch and the transaction is rolled back. The supported subset
+// is documented on groups.ApplyPatch.
+func (h *GroupsHandler) Patch(w http.ResponseWriter, r *http.Request) {
+	provider, ok := scimauth.ProviderFromContext(r.Context())
+	if !ok {
+		response.WriteError(w, http.StatusUnauthorized, "invalidAuth", "no SCIM provider in context")
+		return
+	}
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		response.WriteError(w, http.StatusBadRequest, "invalidValue", "id must be a UUID")
+		return
+	}
+
+	var req groups.PatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.WriteError(w, http.StatusBadRequest, "invalidSyntax", "malformed JSON: "+err.Error())
+		return
+	}
+
+	updated, err := h.svc.Patch(r.Context(), provider, id, req.Operations)
+	if err != nil {
+		writeGroupError(w, err)
+		return
+	}
+
+	w.Header().Set("ETag", updated.Meta.Version)
+	response.WriteJSON(w, http.StatusOK, updated)
+}
+
 // Delete handles DELETE /scim/v2/Groups/{id}.
 func (h *GroupsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	provider, ok := scimauth.ProviderFromContext(r.Context())
@@ -196,6 +230,10 @@ func writeGroupError(w http.ResponseWriter, err error) {
 		response.WriteError(w, http.StatusBadRequest, "invalidValue", err.Error())
 	case errors.Is(err, groups.ErrInvalidFilter):
 		response.WriteError(w, http.StatusBadRequest, "invalidFilter", err.Error())
+	case errors.Is(err, groups.ErrPatchNoTarget):
+		response.WriteError(w, http.StatusBadRequest, "noTarget", err.Error())
+	case errors.Is(err, groups.ErrPatchInvalidValue):
+		response.WriteError(w, http.StatusBadRequest, "invalidValue", err.Error())
 	case errors.Is(err, groups.ErrBuiltinGroup):
 		response.WriteError(w, http.StatusForbidden, "mutability", "built-in group cannot be modified via SCIM")
 	default:

@@ -23,6 +23,7 @@ type mockGroupsService struct {
 	getFn     func(ctx context.Context, providerName string, id uuid.UUID) (*groups.Group, error)
 	listFn    func(ctx context.Context, providerName, filterStr string, offset, limit int) (*groups.ListResult, error)
 	replaceFn func(ctx context.Context, providerName string, id uuid.UUID, g groups.Group) (*groups.Group, error)
+	patchFn   func(ctx context.Context, providerName string, id uuid.UUID, ops []groups.PatchOp) (*groups.Group, error)
 	deleteFn  func(ctx context.Context, providerName string, id uuid.UUID) error
 }
 
@@ -52,6 +53,13 @@ func (m *mockGroupsService) Replace(ctx context.Context, providerName string, id
 		return nil, errNotImplemented
 	}
 	return m.replaceFn(ctx, providerName, id, g)
+}
+
+func (m *mockGroupsService) Patch(ctx context.Context, providerName string, id uuid.UUID, ops []groups.PatchOp) (*groups.Group, error) {
+	if m.patchFn == nil {
+		return nil, errNotImplemented
+	}
+	return m.patchFn(ctx, providerName, id, ops)
 }
 
 func (m *mockGroupsService) Delete(ctx context.Context, providerName string, id uuid.UUID) error {
@@ -492,6 +500,131 @@ func TestGroups_Replace_Builtin(t *testing.T) {
 
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403; body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestGroups_Patch_Success(t *testing.T) {
+	t.Parallel()
+
+	id := uuid.New()
+	var gotOps []groups.PatchOp
+	svc := &mockGroupsService{
+		patchFn: func(_ context.Context, providerName string, gotID uuid.UUID, ops []groups.PatchOp) (*groups.Group, error) {
+			if providerName != "keycloak" {
+				t.Errorf("provider = %q, want keycloak", providerName)
+			}
+			if gotID != id {
+				t.Errorf("id = %s, want %s", gotID, id)
+			}
+			gotOps = ops
+			return sampleGroup(id), nil
+		},
+	}
+	r, token := newGroupsAuthRouter(t, svc)
+
+	body := strings.NewReader(`{"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"replace","path":"displayName","value":"Engineering Renamed"},{"op":"add","path":"members","value":[{"value":"33333333-3333-3333-3333-333333333333"}]}]}`)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/scim/v2/Groups/"+id.String(), body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/scim+json")
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+	if len(gotOps) != 2 {
+		t.Fatalf("Operations forwarded = %d, want 2", len(gotOps))
+	}
+	if gotOps[0].Op != "replace" || gotOps[0].Path != "displayName" {
+		t.Errorf("op[0] = %+v", gotOps[0])
+	}
+	if got := rr.Header().Get("ETag"); !strings.HasPrefix(got, `W/"`) {
+		t.Errorf("ETag = %q, want weak prefix", got)
+	}
+}
+
+func TestGroups_Patch_NoTarget(t *testing.T) {
+	t.Parallel()
+
+	svc := &mockGroupsService{
+		patchFn: func(context.Context, string, uuid.UUID, []groups.PatchOp) (*groups.Group, error) {
+			return nil, groups.ErrPatchNoTarget
+		},
+	}
+	r, token := newGroupsAuthRouter(t, svc)
+
+	body := strings.NewReader(`{"Operations":[{"op":"remove","path":"displayName"}]}`)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/scim/v2/Groups/"+uuid.NewString(), body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"noTarget"`) {
+		t.Errorf("body missing scimType=noTarget: %s", rr.Body.String())
+	}
+}
+
+func TestGroups_Patch_InvalidValue(t *testing.T) {
+	t.Parallel()
+
+	svc := &mockGroupsService{
+		patchFn: func(context.Context, string, uuid.UUID, []groups.PatchOp) (*groups.Group, error) {
+			return nil, groups.ErrPatchInvalidValue
+		},
+	}
+	r, token := newGroupsAuthRouter(t, svc)
+
+	body := strings.NewReader(`{"Operations":[{"op":"add","path":"members","value":[{"value":"not-a-uuid"}]}]}`)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/scim/v2/Groups/"+uuid.NewString(), body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), `"invalidValue"`) {
+		t.Errorf("body missing scimType=invalidValue: %s", rr.Body.String())
+	}
+}
+
+func TestGroups_Patch_Builtin(t *testing.T) {
+	t.Parallel()
+
+	svc := &mockGroupsService{
+		patchFn: func(context.Context, string, uuid.UUID, []groups.PatchOp) (*groups.Group, error) {
+			return nil, groups.ErrBuiltinGroup
+		},
+	}
+	r, token := newGroupsAuthRouter(t, svc)
+
+	body := strings.NewReader(`{"Operations":[{"op":"replace","path":"displayName","value":"hijack"}]}`)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/scim/v2/Groups/"+uuid.NewString(), body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403; body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestGroups_Patch_BadUUID(t *testing.T) {
+	t.Parallel()
+
+	r, token := newGroupsAuthRouter(t, &mockGroupsService{})
+
+	body := strings.NewReader(`{"Operations":[]}`)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/scim/v2/Groups/not-a-uuid", body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rr.Code)
 	}
 }
 

@@ -30,6 +30,7 @@ type UsersService interface {
 	GetByEntityID(ctx context.Context, providerName string, id uuid.UUID) (*users.User, error)
 	List(ctx context.Context, providerName, filterStr string, offset, limit int) (*users.ListResult, error)
 	Replace(ctx context.Context, providerName string, id uuid.UUID, u users.User) (*users.User, error)
+	Patch(ctx context.Context, providerName string, id uuid.UUID, ops []users.PatchOp) (*users.User, error)
 	Delete(ctx context.Context, providerName string, id uuid.UUID) error
 }
 
@@ -166,6 +167,39 @@ func (h *UsersHandler) Replace(w http.ResponseWriter, r *http.Request) {
 	response.WriteJSON(w, http.StatusOK, updated)
 }
 
+// Patch handles PATCH /scim/v2/Users/{id} (RFC 7644 §3.5.2). Each entry
+// in Operations[] is applied in order; the first failure aborts the
+// batch and the transaction is rolled back. The supported subset is
+// documented on users.ApplyPatch.
+func (h *UsersHandler) Patch(w http.ResponseWriter, r *http.Request) {
+	provider, ok := scimauth.ProviderFromContext(r.Context())
+	if !ok {
+		response.WriteError(w, http.StatusUnauthorized, "invalidAuth", "no SCIM provider in context")
+		return
+	}
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		response.WriteError(w, http.StatusBadRequest, "invalidValue", "id must be a UUID")
+		return
+	}
+
+	var req users.PatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.WriteError(w, http.StatusBadRequest, "invalidSyntax", "malformed JSON: "+err.Error())
+		return
+	}
+
+	updated, err := h.svc.Patch(r.Context(), provider, id, req.Operations)
+	if err != nil {
+		writeUserError(w, err)
+		return
+	}
+
+	w.Header().Set("ETag", updated.Meta.Version)
+	response.WriteJSON(w, http.StatusOK, updated)
+}
+
 // parseQueryInt parses an int from a query parameter; missing or invalid
 // values return def.
 func parseQueryInt(raw string, def int) int {
@@ -214,6 +248,10 @@ func writeUserError(w http.ResponseWriter, err error) {
 		response.WriteError(w, http.StatusBadRequest, "invalidValue", "externalId is required on create")
 	case errors.Is(err, users.ErrInvalidFilter):
 		response.WriteError(w, http.StatusBadRequest, "invalidFilter", err.Error())
+	case errors.Is(err, users.ErrPatchNoTarget):
+		response.WriteError(w, http.StatusBadRequest, "noTarget", err.Error())
+	case errors.Is(err, users.ErrPatchInvalidValue):
+		response.WriteError(w, http.StatusBadRequest, "invalidValue", err.Error())
 	default:
 		response.WriteError(w, http.StatusInternalServerError, "", err.Error())
 	}

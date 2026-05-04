@@ -41,6 +41,7 @@ func Mount(r chi.Router, registry *auth.Registry, h Handlers) {
 					r.Post("/Users", h.Users.Create)
 					r.Get("/Users/{id}", h.Users.GetByID)
 					r.Put("/Users/{id}", h.Users.Replace)
+					r.Patch("/Users/{id}", h.Users.Patch)
 					r.Delete("/Users/{id}", h.Users.Delete)
 				}
 
@@ -49,6 +50,7 @@ func Mount(r chi.Router, registry *auth.Registry, h Handlers) {
 					r.Post("/Groups", h.Groups.Create)
 					r.Get("/Groups/{id}", h.Groups.GetByID)
 					r.Put("/Groups/{id}", h.Groups.Replace)
+					r.Patch("/Groups/{id}", h.Groups.Patch)
 					r.Delete("/Groups/{id}", h.Groups.Delete)
 				}
 			})

@@ -188,6 +188,73 @@ func (s *Service) Replace(ctx context.Context, providerName string, id uuid.UUID
 	return &out, nil
 }
 
+// Patch applies a SCIM PATCH operation list to the user (RFC 7644
+// §3.5.2). The supported subset is documented on ApplyPatch. Behavior
+// mirrors Replace: properties are rewritten atomically with an audit
+// entry; the (provider, external_subject) link and entity_id are
+// preserved.
+func (s *Service) Patch(ctx context.Context, providerName string, id uuid.UUID, ops []PatchOp) (*User, error) {
+	if len(ops) == 0 {
+		return s.GetByEntityID(ctx, providerName, id)
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op
+
+	before, err := s.repo.GetByEntityID(ctx, tx, providerName, id)
+	if err != nil {
+		return nil, err
+	}
+
+	newProps, err := ApplyPatch(before.Properties, ops)
+	if err != nil {
+		return nil, err
+	}
+
+	// Enforce the schema-required attribute even after PATCH: clients
+	// must not be able to remove userName via a future op.
+	if _, ok := newProps[PropertyKeyUserName].(string); !ok {
+		return nil, ErrUserNameRequired
+	}
+
+	updatedAt, err := s.repo.Replace(ctx, tx, providerName, id, newProps)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	beforeJSON, _ := json.Marshal(before.Properties)
+	afterJSON, _ := json.Marshal(newProps)
+	if err := s.audit.Write(ctx, tx, audit.Entry{
+		Actor:        scimActor(providerName),
+		Operation:    audit.OpUpdate,
+		ResourceType: "user",
+		ResourceID:   id,
+		BeforeValue:  beforeJSON,
+		AfterValue:   afterJSON,
+	}); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+
+	out := FromStored(StoredUser{
+		EntityID:        id,
+		Properties:      newProps,
+		ExternalSubject: before.ExternalSubject,
+		CreatedAt:       before.CreatedAt,
+		UpdatedAt:       updatedAt,
+	})
+	return &out, nil
+}
+
 // Delete removes the calling provider's link to the user. If the user has
 // no remaining provider links after the delete, the underlying entity is
 // also removed (CASCADE handles relations).

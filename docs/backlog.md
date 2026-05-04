@@ -169,8 +169,12 @@
 95. Users CRUD — split into B.3.a and B.3.b for review hygiene:
     - [x] **B.3.a** — POST/GET/DELETE `/scim/v2/Users`, mapper (SCIM `User` ↔ entity + entity_external_identity), schema/ResourceType registered in discovery, auth middleware attached to `/Users` route group
     - [x] **B.3.b** — LIST `/scim/v2/Users` with hand-rolled filter parser (eq/ne/co/sw/ew/pr/and/or), pagination (startIndex/count, default 50, max 200), PUT (replace user)
-96. [ ] B.4 — Groups CRUD: endpoints, mapper (SCIM `Group` ↔ entity + relations), member resolution via `entity_external_identity`
-97. [ ] B.5 — PATCH support for Users and Groups (documented subset of paths from §7.1)
+96. Groups CRUD — split into B.4.a and B.4.b for review hygiene:
+    - [x] **B.4.a** — POST/GET/DELETE `/scim/v2/Groups`, mapper (SCIM `Group` ↔ entity + relations), members persisted as `member_of` relations, member resolution via `entity_external_identity`, schema/ResourceType registered in discovery
+    - [x] **B.4.b** — LIST `/scim/v2/Groups` with reused filter parser (displayName/id/externalId), pagination, PUT (replace group + diff-based member reconciliation), `is_builtin` protection against built-in group mutation
+97. PATCH support — split into B.5.a and B.5.b for review hygiene:
+    - [x] **B.5.a** — `PATCH /scim/v2/Users/{id}` with hand-rolled SCIM PATCH path parser, supported subset per §7.1 (`add`/`replace` `displayName|userName|active|emails`, `replace emails[primary eq true].value`, `remove emails[primary eq true]`)
+    - [x] **B.5.b** — `PATCH /scim/v2/Groups/{id}` with the same parser, supported subset per §7.1 (`add`/`replace` `displayName`, `add`/`replace members`, `remove members`, `remove members[value eq "<id>"]`)
 98. [ ] B.6 — `scim-protocol-tester` utility under `deployments/scim-protocol-tester/` — YAML-scenario-driven raw SCIM client for protocol-edge tests
 99. [ ] B.7 — Replace Dex+glauth with Authentik in `deployments/multi-idp/`; author Authentik blueprint pre-configuring users/groups/SCIM Provider; CI integration
 

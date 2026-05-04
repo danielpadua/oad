@@ -244,6 +244,93 @@ func (s *Service) Replace(ctx context.Context, providerName string, id uuid.UUID
 	return &out, nil
 }
 
+// Patch applies a SCIM PATCH operation list to the group (RFC 7644
+// §3.5.2). The supported subset is documented on ApplyPatch. Behavior
+// mirrors Replace: properties + member relations are rewritten
+// atomically with an audit entry; the (provider, external_subject)
+// link and entity_id are preserved.
+func (s *Service) Patch(ctx context.Context, providerName string, id uuid.UUID, ops []PatchOp) (*Group, error) {
+	if len(ops) == 0 {
+		return s.GetByEntityID(ctx, providerName, id)
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op
+
+	before, err := s.repo.GetByEntityID(ctx, tx, providerName, id)
+	if err != nil {
+		return nil, err
+	}
+
+	state := PatchState{
+		Properties: before.Properties,
+		MemberIDs:  memberEntityIDs(before.Members),
+	}
+	next, err := ApplyPatch(state, ops)
+	if err != nil {
+		return nil, err
+	}
+
+	// Enforce the schema-required attribute even after PATCH: clients
+	// must not be able to remove displayName via a future op.
+	if dn, _ := next.Properties[PropertyKeyDisplayName].(string); dn == "" {
+		return nil, ErrDisplayNameRequired
+	}
+
+	if len(next.MemberIDs) > 0 {
+		resolved, err := s.repo.ValidateMembers(ctx, tx, providerName, next.MemberIDs)
+		if err != nil {
+			return nil, err
+		}
+		if len(resolved) != len(next.MemberIDs) {
+			return nil, fmt.Errorf("%w: one or more member references not found in provider tenant", ErrInvalidMember)
+		}
+	}
+
+	stored, err := s.repo.Replace(ctx, tx, providerName, id, next.Properties, next.MemberIDs)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	beforeJSON, _ := json.Marshal(before.Properties)
+	afterJSON, _ := json.Marshal(next.Properties)
+	if err := s.audit.Write(ctx, tx, audit.Entry{
+		Actor:        scimActor(providerName),
+		Operation:    audit.OpUpdate,
+		ResourceType: "group",
+		ResourceID:   id,
+		BeforeValue:  beforeJSON,
+		AfterValue:   afterJSON,
+	}); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+
+	out := FromStored(*stored)
+	return &out, nil
+}
+
+// memberEntityIDs projects MemberEntity slice to its EntityIDs in order.
+func memberEntityIDs(members []MemberEntity) []uuid.UUID {
+	if len(members) == 0 {
+		return nil
+	}
+	ids := make([]uuid.UUID, len(members))
+	for i, m := range members {
+		ids[i] = m.EntityID
+	}
+	return ids
+}
+
 // parseMemberIDs converts SCIM Member.value strings into UUIDs. Every
 // value must parse and be unique — duplicates indicate a malformed
 // payload and would also blow up the relation unique index later.
