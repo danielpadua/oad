@@ -114,7 +114,7 @@ func TestServiceProviderConfig_Meta(t *testing.T) {
 	}
 }
 
-func TestDiscovery_SchemasContainsUser(t *testing.T) {
+func TestDiscovery_SchemasContainsUserAndGroup(t *testing.T) {
 	t.Parallel()
 
 	r := newTestRouter()
@@ -130,23 +130,30 @@ func TestDiscovery_SchemasContainsUser(t *testing.T) {
 	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if body["totalResults"].(float64) != 1 {
-		t.Errorf("totalResults = %v, want 1", body["totalResults"])
+	if body["totalResults"].(float64) != 2 {
+		t.Errorf("totalResults = %v, want 2", body["totalResults"])
 	}
 	resources, _ := body["Resources"].([]any)
-	if len(resources) != 1 {
-		t.Fatalf("Resources len = %d, want 1", len(resources))
+	if len(resources) != 2 {
+		t.Fatalf("Resources len = %d, want 2", len(resources))
 	}
-	user, _ := resources[0].(map[string]any)
-	if user["id"] != "urn:ietf:params:scim:schemas:core:2.0:User" {
-		t.Errorf("User schema id = %v, want SCIM User URN", user["id"])
+	got := map[string]bool{}
+	for _, raw := range resources {
+		s, _ := raw.(map[string]any)
+		id, _ := s["id"].(string)
+		got[id] = true
 	}
-	if user["name"] != "User" {
-		t.Errorf("User schema name = %v, want User", user["name"])
+	for _, want := range []string{
+		"urn:ietf:params:scim:schemas:core:2.0:User",
+		"urn:ietf:params:scim:schemas:core:2.0:Group",
+	} {
+		if !got[want] {
+			t.Errorf("schema %q missing from /Schemas response: got=%v", want, got)
+		}
 	}
 }
 
-func TestDiscovery_ResourceTypesContainsUser(t *testing.T) {
+func TestDiscovery_ResourceTypesContainsUserAndGroup(t *testing.T) {
 	t.Parallel()
 
 	r := newTestRouter()
@@ -162,16 +169,22 @@ func TestDiscovery_ResourceTypesContainsUser(t *testing.T) {
 	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if body["totalResults"].(float64) != 1 {
-		t.Errorf("totalResults = %v, want 1", body["totalResults"])
+	if body["totalResults"].(float64) != 2 {
+		t.Errorf("totalResults = %v, want 2", body["totalResults"])
 	}
 	resources, _ := body["Resources"].([]any)
-	if len(resources) != 1 {
-		t.Fatalf("Resources len = %d, want 1", len(resources))
+	got := map[string]string{}
+	for _, raw := range resources {
+		rt, _ := raw.(map[string]any)
+		id, _ := rt["id"].(string)
+		ep, _ := rt["endpoint"].(string)
+		got[id] = ep
 	}
-	rt, _ := resources[0].(map[string]any)
-	if rt["id"] != "User" || rt["endpoint"] != "/Users" {
-		t.Errorf("ResourceType = %v, want id=User endpoint=/Users", rt)
+	if got["User"] != "/Users" {
+		t.Errorf("User ResourceType endpoint = %q, want /Users", got["User"])
+	}
+	if got["Group"] != "/Groups" {
+		t.Errorf("Group ResourceType endpoint = %q, want /Groups", got["Group"])
 	}
 }
 

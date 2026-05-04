@@ -25,6 +25,7 @@ import (
 	"github.com/danielpadua/oad/internal/relation"
 	"github.com/danielpadua/oad/internal/retrieval"
 	scimauth "github.com/danielpadua/oad/internal/scim/auth"
+	scimgroups "github.com/danielpadua/oad/internal/scim/groups"
 	scimhandler "github.com/danielpadua/oad/internal/scim/handler"
 	scimusers "github.com/danielpadua/oad/internal/scim/users"
 	"github.com/danielpadua/oad/internal/system"
@@ -149,6 +150,10 @@ func runServer() error {
 	scimUsersSvc := scimusers.NewService(pool, scimUsersRepo, auditSvc)
 	scimUsersHandler := scimhandler.NewUsersHandler(scimUsersSvc)
 
+	scimGroupsRepo := scimgroups.NewRepository()
+	scimGroupsSvc := scimgroups.NewService(pool, scimGroupsRepo, auditSvc)
+	scimGroupsHandler := scimhandler.NewGroupsHandler(scimGroupsSvc)
+
 	router := api.NewRouter(api.Dependencies{
 		DB:       pool,
 		Config:   cfg,
@@ -173,8 +178,9 @@ func runServer() error {
 
 		ConfigHandler: handler.NewConfigHandler(cfg),
 
-		SCIMRegistry:     scimRegistry,
-		SCIMUsersHandler: scimUsersHandler,
+		SCIMRegistry:      scimRegistry,
+		SCIMUsersHandler:  scimUsersHandler,
+		SCIMGroupsHandler: scimGroupsHandler,
 
 		WebUIHandler: func() http.Handler {
 			h, err := webui.NewHandler()

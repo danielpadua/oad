@@ -106,10 +106,9 @@ func (h *DiscoveryHandler) ServiceProviderConfig(w http.ResponseWriter, _ *http.
 }
 
 // Schemas handles GET /scim/v2/Schemas. Returns the list of schema
-// definitions the server supports. Phase 9.B.3 added the User schema;
-// Group will be added in 9.B.4.
+// definitions the server supports.
 func (h *DiscoveryHandler) Schemas(w http.ResponseWriter, _ *http.Request) {
-	resources := []any{schema.User()}
+	resources := []any{schema.User(), schema.Group()}
 	response.WriteJSON(w, http.StatusOK, listResponse{
 		Schemas:      []string{scimURNListResponse},
 		TotalResults: len(resources),
@@ -118,10 +117,9 @@ func (h *DiscoveryHandler) Schemas(w http.ResponseWriter, _ *http.Request) {
 }
 
 // ResourceTypes handles GET /scim/v2/ResourceTypes. Returns the list of
-// resource types the server supports. Phase 9.B.3 added User; Group will
-// be added in 9.B.4.
+// resource types the server supports.
 func (h *DiscoveryHandler) ResourceTypes(w http.ResponseWriter, _ *http.Request) {
-	resources := []any{schema.UserResourceType()}
+	resources := []any{schema.UserResourceType(), schema.GroupResourceType()}
 	response.WriteJSON(w, http.StatusOK, listResponse{
 		Schemas:      []string{scimURNListResponse},
 		TotalResults: len(resources),

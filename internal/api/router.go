@@ -62,6 +62,9 @@ type Dependencies struct {
 	// endpoints are still served when SCIMRegistry is non-nil).
 	SCIMUsersHandler *scimhandler.UsersHandler
 
+	// Phase 9.B.4 — SCIM /Groups handler (nil disables /Groups routes).
+	SCIMGroupsHandler *scimhandler.GroupsHandler
+
 	// Embedded Management UI — SPA catch-all (nil disables the UI).
 	WebUIHandler http.Handler
 }
@@ -102,7 +105,8 @@ func NewRouter(deps Dependencies) http.Handler {
 	// will use the SCIM tenant token registry for bearer auth.
 	if deps.SCIMRegistry != nil {
 		scimhandler.Mount(r, deps.SCIMRegistry, scimhandler.Handlers{
-			Users: deps.SCIMUsersHandler,
+			Users:  deps.SCIMUsersHandler,
+			Groups: deps.SCIMGroupsHandler,
 		})
 	}
 
