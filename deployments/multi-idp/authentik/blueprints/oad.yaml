@@ -1,0 +1,213 @@
+# Authentik blueprint for the OAD multi-idp dev stack.
+#
+# This file is mounted into the authentik containers at
+# /blueprints/custom/oad.yaml and is applied automatically on first
+# start. It seeds the Authentik instance with everything required for:
+#
+#   1. OIDC login into the OAD management UI (replaces what Dex did
+#      before B.7 — see scim-ingest.md §11/§12.1).
+#   2. SCIM provisioning of Users + Groups from Authentik into OAD via
+#      the OAD SCIM Provider that targets http://api:8080/scim/v2.
+#
+# Tokens and secrets are kept out of this YAML and pulled from the
+# Authentik environment at apply time via `!Env <var>` tags. See
+# deployments/multi-idp/.env.example for the required values.
+#
+# Source-of-truth design: docs/design/scim-ingest.md §12.1.
+
+version: 1
+metadata:
+  name: oad-bootstrap
+  labels:
+    blueprints.goauthentik.io/instantiate: "true"
+
+context:
+  oidc_client_id: oad-web-authentik
+  scim_endpoint: http://api:8080/scim/v2
+
+entries:
+  # ────────────────────────────────────────────────────────────────────
+  # Users
+  #
+  # Mirrors the four fixture users used by the Keycloak realm so the
+  # demo experience is symmetric across IdPs.
+  # ────────────────────────────────────────────────────────────────────
+  - model: authentik_core.user
+    state: present
+    identifiers:
+      username: admin@oad.dev
+    attrs:
+      name: OAD Admin
+      email: admin@oad.dev
+      password: !Env [AUTHENTIK_BOOTSTRAP_USER_PW_ADMIN, admin]
+      is_active: true
+      attributes:
+        oad_external_id: authentik-admin
+
+  - model: authentik_core.user
+    state: present
+    identifiers:
+      username: editor@oad.dev
+    attrs:
+      name: OAD Editor
+      email: editor@oad.dev
+      password: !Env [AUTHENTIK_BOOTSTRAP_USER_PW_EDITOR, editor]
+      is_active: true
+      attributes:
+        oad_external_id: authentik-editor
+
+  - model: authentik_core.user
+    state: present
+    identifiers:
+      username: viewer@oad.dev
+    attrs:
+      name: OAD Viewer
+      email: viewer@oad.dev
+      password: !Env [AUTHENTIK_BOOTSTRAP_USER_PW_VIEWER, viewer]
+      is_active: true
+      attributes:
+        oad_external_id: authentik-viewer
+
+  - model: authentik_core.user
+    state: present
+    identifiers:
+      username: pdp@oad.dev
+    attrs:
+      name: OAD PDP
+      email: pdp@oad.dev
+      password: !Env [AUTHENTIK_BOOTSTRAP_USER_PW_PDP, pdp]
+      is_active: true
+      attributes:
+        oad_external_id: authentik-pdp
+
+  # ────────────────────────────────────────────────────────────────────
+  # Groups
+  #
+  # The IdP-side groups that map onto OAD's role model. Authentik will
+  # SCIM-push these as separate Group resources; OAD then resolves
+  # role membership at JWT validation time via the `groups` claim.
+  # ────────────────────────────────────────────────────────────────────
+  - model: authentik_core.group
+    state: present
+    identifiers:
+      name: oad-admin
+    attrs:
+      attributes:
+        oad_external_id: authentik-group-admin
+      users_obj:
+        - !Find [authentik_core.user, [username, admin@oad.dev]]
+
+  - model: authentik_core.group
+    state: present
+    identifiers:
+      name: oad-editor
+    attrs:
+      attributes:
+        oad_external_id: authentik-group-editor
+      users_obj:
+        - !Find [authentik_core.user, [username, editor@oad.dev]]
+
+  - model: authentik_core.group
+    state: present
+    identifiers:
+      name: oad-viewer
+    attrs:
+      attributes:
+        oad_external_id: authentik-group-viewer
+      users_obj:
+        - !Find [authentik_core.user, [username, viewer@oad.dev]]
+        - !Find [authentik_core.user, [username, pdp@oad.dev]]
+
+  # ────────────────────────────────────────────────────────────────────
+  # OAuth2 / OpenID Connect Provider
+  #
+  # Issues JWTs that the OAD api accepts as a second IdP alongside
+  # Keycloak. Authority = http://localhost:9000/application/o/oad/.
+  # The signing key and authorization flow are Authentik defaults
+  # shipped with every install.
+  # ────────────────────────────────────────────────────────────────────
+  - model: authentik_providers_oauth2.oauth2provider
+    state: present
+    identifiers:
+      name: oad-oidc-provider
+    attrs:
+      client_type: public
+      client_id: !Context oidc_client_id
+      authorization_flow: !Find [
+        authentik_flows.flow,
+        [slug, default-provider-authorization-implicit-consent]
+      ]
+      signing_key: !Find [
+        authentik_crypto.certificatekeypair,
+        [name, "authentik Self-signed Certificate"]
+      ]
+      redirect_uris: |
+        http://localhost:8080/callback
+        http://localhost:8080/
+      property_mappings:
+        - !Find [
+            authentik_providers_oauth2.scopemapping,
+            [scope_name, openid]
+          ]
+        - !Find [
+            authentik_providers_oauth2.scopemapping,
+            [scope_name, email]
+          ]
+        - !Find [
+            authentik_providers_oauth2.scopemapping,
+            [scope_name, profile]
+          ]
+      issuer_mode: per_provider
+
+  # ────────────────────────────────────────────────────────────────────
+  # SCIM Provider
+  #
+  # Pushes Users + Groups to OAD's /scim/v2 endpoint. Bearer token is
+  # read from AUTHENTIK_OAD_SCIM_TOKEN at apply time so the same value
+  # can be shared with the OAD api container via OAD_SCIM_TOKEN_AUTHENTIK.
+  # ────────────────────────────────────────────────────────────────────
+  - model: authentik_providers_scim.scimprovider
+    state: present
+    identifiers:
+      name: oad-scim-provider
+    attrs:
+      url: !Context scim_endpoint
+      token: !Env AUTHENTIK_OAD_SCIM_TOKEN
+      exclude_users_service_account: true
+      property_mappings:
+        - !Find [
+            authentik_providers_scim.scimmapping,
+            [name, "authentik default SCIM Mapping: User"]
+          ]
+      property_mappings_group:
+        - !Find [
+            authentik_providers_scim.scimmapping,
+            [name, "authentik default SCIM Mapping: Group"]
+          ]
+
+  # ────────────────────────────────────────────────────────────────────
+  # Application
+  #
+  # Binds the OIDC and SCIM providers to a single Application named
+  # "OAD". Backchannel providers are how Authentik attaches push-style
+  # providers (SCIM) to an application that primarily authenticates
+  # via OIDC.
+  # ────────────────────────────────────────────────────────────────────
+  - model: authentik_core.application
+    state: present
+    identifiers:
+      slug: oad
+    attrs:
+      name: OAD
+      provider: !Find [
+        authentik_providers_oauth2.oauth2provider,
+        [name, oad-oidc-provider]
+      ]
+      backchannel_providers:
+        - !Find [
+            authentik_providers_scim.scimprovider,
+            [name, oad-scim-provider]
+          ]
+      meta_launch_url: http://localhost:8080/
+      open_in_new_tab: true
+      policy_engine_mode: any

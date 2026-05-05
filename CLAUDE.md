@@ -116,7 +116,7 @@ migrations/
 web/                       # React 19 + Vite Management UI source (built into internal/webui/dist/)
 docs/                      # Design documents: spec, data model, component/sequence diagrams, backlog
 deployments/               # Local development stacks (docker compose + IdP fixtures)
-  multi-idp/               #   API + Keycloak + Dex + glauth + Postgres
+  multi-idp/               #   API + Keycloak + Authentik (server/worker/redis/postgres) + Postgres
   single-idp/              #   API + Keycloak + Postgres
 ```
 
@@ -143,20 +143,31 @@ selects a stack via the `STACK` variable; the choice is explicit (no default).
 
 ## Stacks
 
-### `deployments/multi-idp/` — Keycloak + Dex/glauth + Postgres
+### `deployments/multi-idp/` — Keycloak + Authentik + Postgres
 
-Demonstrates multi-provider validation: two independent IdPs, two JWKS, distinct
-claim mappings, served by the same OAD instance.
+Demonstrates multi-provider validation: two independent real IdPs share the
+same OAD instance. Keycloak is OIDC-only; Authentik is OIDC + the SCIM
+ingest source (provisions Users/Groups into OAD on first sync).
 
-| Service    | Image / Build                       | Port | Purpose                            |
-|------------|-------------------------------------|------|------------------------------------|
-| `api`      | `Dockerfile` (repo root)            | 8080 | OAD API + embedded Management UI  |
-| `keycloak` | `quay.io/keycloak/keycloak:24.0.0`  | 8081 | OIDC Identity Provider #1          |
-| `dex`      | `ghcr.io/dexidp/dex:v2.41.1`        | 5556 | OIDC Identity Provider #2 (LDAP)   |
-| `glauth`   | `glauth/glauth:v2.5.0`              | 3893 | Static LDAP directory for Dex      |
-| `postgres` | `postgres:15-alpine`                | 5432 | PostgreSQL database                |
+| Service              | Image / Build                              | Port | Purpose                                                |
+|----------------------|--------------------------------------------|------|--------------------------------------------------------|
+| `api`                | `Dockerfile` (repo root)                   | 8080 | OAD API + embedded Management UI                       |
+| `keycloak`           | `quay.io/keycloak/keycloak:24.0.0`         | 8081 | OIDC Identity Provider #1                              |
+| `authentik-server`   | `ghcr.io/goauthentik/server:2024.10.5`     | 9000 | OIDC Identity Provider #2 + SCIM source                |
+| `authentik-worker`   | `ghcr.io/goauthentik/server:2024.10.5`     | —    | Authentik async task runner (SCIM provisioning cycles) |
+| `authentik-redis`    | `redis:7-alpine`                           | —    | Authentik task broker                                  |
+| `authentik-postgres` | `postgres:15-alpine`                       | —    | Authentik database (separate from OAD's)               |
+| `postgres`           | `postgres:15-alpine`                       | 5432 | OAD's PostgreSQL database                              |
+
+The stack requires a `.env` file alongside the compose file. Copy
+`deployments/multi-idp/.env.example` and fill in `AUTHENTIK_SECRET_KEY`,
+`AUTHENTIK_OAD_SCIM_TOKEN`, and `OAD_SCIM_TOKEN_AUTHENTIK` (the two SCIM
+token vars must hold the same value — Authentik signs requests with it,
+OAD authenticates Authentik against the SCIM tenant registry with it).
 
 ```bash
+cp deployments/multi-idp/.env.example deployments/multi-idp/.env
+# fill in the three required values, then:
 make dev STACK=multi-idp
 ```
 
@@ -169,14 +180,14 @@ Pre-configured Keycloak users (realm imported automatically on first start):
 | `auditor` | `auditor` | `viewer`  |
 | `pdp`     | `pdp`     | `viewer`  |
 
-Pre-configured Dex users (roles via `groups` claim from glauth LDAP; see `deployments/multi-idp/dex/config.yml` and `deployments/multi-idp/glauth/config.cfg`):
+Pre-configured Authentik users (seeded via `deployments/multi-idp/authentik/blueprints/oad.yaml` and provisioned into OAD via SCIM on first sync; roles via the `groups` claim):
 
-| Email            | Password  | LDAP Group | OAD Role  |
-|------------------|-----------|------------|-----------|
-| `admin@oad.dev`  | `admin`   | `admin`    | `admin`   |
-| `editor@oad.dev` | `editor`  | `editor`   | `editor`  |
-| `viewer@oad.dev` | `viewer`  | `viewer`   | `viewer`  |
-| `pdp@oad.dev`    | `pdp`     | `viewer`   | `viewer`  |
+| Username         | Password  | Authentik Group | OAD Role  |
+|------------------|-----------|-----------------|-----------|
+| `admin@oad.dev`  | `admin`   | `oad-admin`     | `admin`   |
+| `editor@oad.dev` | `editor`  | `oad-editor`    | `editor`  |
+| `viewer@oad.dev` | `viewer`  | `oad-viewer`    | `viewer`  |
+| `pdp@oad.dev`    | `pdp`     | `oad-viewer`    | `viewer`  |
 
 ### `deployments/single-idp/` — Keycloak + Postgres
 

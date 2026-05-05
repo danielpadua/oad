@@ -1,3 +1,19 @@
+# Multi-IdP development stack.
+#
+# Runs the OAD API alongside two real Identity Providers:
+#
+#   - Keycloak — OIDC for the management plane (issues JWTs that
+#     authenticate users into OAD).
+#   - Authentik — second IdP that demonstrates SCIM ingest. Authentik
+#     also issues OIDC tokens, replacing the Dex+glauth pair the stack
+#     used before B.7 (see docs/design/scim-ingest.md §11/§12.1).
+#
+# Authentik provisions its bootstrapped Users and Groups into OAD via
+# its SCIM Provider on first start. The SCIM bearer token is shared
+# between Authentik and OAD via the env vars AUTHENTIK_OAD_SCIM_TOKEN
+# and OAD_SCIM_TOKEN_AUTHENTIK respectively (set them to the same
+# value — see .env.example).
+
 services:
   api:
     build:
@@ -8,6 +24,7 @@ services:
       - "8080:8080"
     environment:
       OAD_DATABASE: "postgresql://oad:oad@postgres:5432/oad?sslmode=disable"
+      OAD_SCIM_TOKEN_AUTHENTIK: "${OAD_SCIM_TOKEN_AUTHENTIK:?set OAD_SCIM_TOKEN_AUTHENTIK in .env}"
     volumes:
       - ./config.yml:/etc/oad/config.yml:ro
     command: ["run", "server", "--config", "/etc/oad/config.yml"]
@@ -16,7 +33,7 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_healthy
-      dex:
+      authentik-server:
         condition: service_healthy
     restart: on-failure
 
@@ -56,32 +73,105 @@ services:
       retries: 10
     restart: unless-stopped
 
-  glauth:
-    image: glauth/glauth:v2.5.0
-    ports:
-      - "3893:3893"
-    volumes:
-      - ./glauth/config.cfg:/app/config/config.cfg:ro
-    restart: unless-stopped
+  # ──────────────────────────────────────────────────────────────────────
+  # Authentik
+  #
+  # Authentik runs as four cooperating containers (server + worker +
+  # redis + postgres). The custom blueprint mounted at
+  # /blueprints/custom/oad.yaml is applied on first start and seeds the
+  # Users / Groups / Application / OIDC Provider / SCIM Provider that
+  # the OAD demo expects.
+  # ──────────────────────────────────────────────────────────────────────
 
-  dex:
-    image: ghcr.io/dexidp/dex:v2.41.1
-    ports:
-      - "5556:5556"
+  authentik-postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: authentik
+      POSTGRES_PASSWORD: authentik
+      POSTGRES_DB: authentik
     volumes:
-      - ./dex/config.yml:/etc/dex/config.yml:ro
-    command: ["dex", "serve", "/etc/dex/config.yml"]
-    depends_on:
-      glauth:
-        # Dex connects to LDAP lazily (on first auth), so service_started is enough.
-        condition: service_started
+      - authentik_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:5556/healthz || exit 1"]
+      test: ["CMD-SHELL", "pg_isready -U authentik -d authentik"]
       interval: 5s
       timeout: 5s
       retries: 10
     restart: unless-stopped
 
+  authentik-redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - authentik_redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:2024.10.5
+    command: server
+    environment:
+      AUTHENTIK_SECRET_KEY: "${AUTHENTIK_SECRET_KEY:?set AUTHENTIK_SECRET_KEY in .env}"
+      AUTHENTIK_REDIS__HOST: authentik-redis
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgres
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: authentik
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_BOOTSTRAP_PASSWORD: "${AUTHENTIK_BOOTSTRAP_PASSWORD:-akadmin}"
+      AUTHENTIK_BOOTSTRAP_TOKEN: "${AUTHENTIK_BOOTSTRAP_TOKEN:-}"
+      AUTHENTIK_OAD_SCIM_TOKEN: "${AUTHENTIK_OAD_SCIM_TOKEN:?set AUTHENTIK_OAD_SCIM_TOKEN in .env}"
+      AUTHENTIK_BOOTSTRAP_USER_PW_ADMIN: "${AUTHENTIK_BOOTSTRAP_USER_PW_ADMIN:-admin}"
+      AUTHENTIK_BOOTSTRAP_USER_PW_EDITOR: "${AUTHENTIK_BOOTSTRAP_USER_PW_EDITOR:-editor}"
+      AUTHENTIK_BOOTSTRAP_USER_PW_VIEWER: "${AUTHENTIK_BOOTSTRAP_USER_PW_VIEWER:-viewer}"
+      AUTHENTIK_BOOTSTRAP_USER_PW_PDP: "${AUTHENTIK_BOOTSTRAP_USER_PW_PDP:-pdp}"
+    volumes:
+      - ./authentik/blueprints:/blueprints/custom:ro
+      - authentik_media:/media
+    ports:
+      - "9000:9000"
+    depends_on:
+      authentik-postgres:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "ak", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2024.10.5
+    command: worker
+    environment:
+      AUTHENTIK_SECRET_KEY: "${AUTHENTIK_SECRET_KEY:?set AUTHENTIK_SECRET_KEY in .env}"
+      AUTHENTIK_REDIS__HOST: authentik-redis
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgres
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: authentik
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_OAD_SCIM_TOKEN: "${AUTHENTIK_OAD_SCIM_TOKEN:?set AUTHENTIK_OAD_SCIM_TOKEN in .env}"
+      AUTHENTIK_BOOTSTRAP_USER_PW_ADMIN: "${AUTHENTIK_BOOTSTRAP_USER_PW_ADMIN:-admin}"
+      AUTHENTIK_BOOTSTRAP_USER_PW_EDITOR: "${AUTHENTIK_BOOTSTRAP_USER_PW_EDITOR:-editor}"
+      AUTHENTIK_BOOTSTRAP_USER_PW_VIEWER: "${AUTHENTIK_BOOTSTRAP_USER_PW_VIEWER:-viewer}"
+      AUTHENTIK_BOOTSTRAP_USER_PW_PDP: "${AUTHENTIK_BOOTSTRAP_USER_PW_PDP:-pdp}"
+    volumes:
+      - ./authentik/blueprints:/blueprints/custom:ro
+      - authentik_media:/media
+    depends_on:
+      authentik-postgres:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   keycloak_data:
+  authentik_postgres_data:
+  authentik_redis_data:
+  authentik_media:

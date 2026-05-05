@@ -1,6 +1,13 @@
 # OAD runtime configuration for the multi-idp deployment stack.
 # Mounted read-only into the api container at /etc/oad/config.yml.
 # The api service passes --config /etc/oad/config.yml to the binary.
+#
+# Two providers are registered:
+#
+#   - keycloak  — primary OIDC IdP for the management plane.
+#   - authentik — second OIDC IdP that ALSO acts as the SCIM source.
+#                 SCIM token is shared with Authentik via the env var
+#                 OAD_SCIM_TOKEN_AUTHENTIK (see .env.example).
 
 auth:
   mode: jwt
@@ -22,24 +29,32 @@ auth:
         client_id: oad-web
         scope: openid profile email
 
-    - name: dex
-      display_name: Dex
+    - name: authentik
+      display_name: Authentik
       backend:
         # Internal Docker network URL — reachable from the api container.
-        jwks_url: http://dex:5556/keys
-        # Must match the iss claim; Dex mints tokens with the external issuer URL.
-        issuer: http://localhost:5556
-        # Dex sets aud to the requesting client ID (oad-web-dex) for public clients.
-        audience: oad-web-dex
+        # Authentik exposes per-application JWKS at /application/o/<slug>/jwks/.
+        jwks_url: http://authentik-server:9000/application/o/oad/jwks/
+        # Must match the `iss` claim. Authentik mints tokens with the
+        # external issuer URL when issuer_mode=per_provider in the
+        # blueprint's OAuth2Provider entry.
+        issuer: http://localhost:9000/application/o/oad/
+        # Authentik sets aud to the requesting client_id for public clients.
+        audience: oad-web-authentik
         claims_mapping:
-          # Dex's LDAP connector (backed by glauth) emits per-user group
-          # membership as the `groups` claim. OAD maps it to roles here.
+          # Authentik's default User SCIM mapping emits group memberships
+          # under the `groups` claim. OAD maps it to roles here.
           roles_claim: groups
       webui:
         # External URL — used by the browser OIDC client.
-        authority: http://localhost:5556
-        client_id: oad-web-dex
-        scope: openid profile email groups
+        authority: http://localhost:9000/application/o/oad/
+        client_id: oad-web-authentik
+        scope: openid profile email
+      scim:
+        enabled: true
+        # Shared with Authentik via AUTHENTIK_OAD_SCIM_TOKEN. Both env
+        # vars must hold the same value (see .env.example).
+        token: env:OAD_SCIM_TOKEN_AUTHENTIK
 
 webui:
   redirect_uri: http://localhost:8080/callback

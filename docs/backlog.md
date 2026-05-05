@@ -176,7 +176,9 @@
     - [x] **B.5.a** — `PATCH /scim/v2/Users/{id}` with hand-rolled SCIM PATCH path parser, supported subset per §7.1 (`add`/`replace` `displayName|userName|active|emails`, `replace emails[primary eq true].value`, `remove emails[primary eq true]`)
     - [x] **B.5.b** — `PATCH /scim/v2/Groups/{id}` with the same parser, supported subset per §7.1 (`add`/`replace` `displayName`, `add`/`replace members`, `remove members`, `remove members[value eq "<id>"]`)
 98. [x] B.6 — `scim-protocol-tester` utility under `deployments/scim-protocol-tester/` — YAML-scenario-driven raw SCIM client for protocol-edge tests (CLI + runner with capture/substitution + partial-body assertions, four bundled scenarios, `make scim-protocol-tester` target)
-99. [ ] B.7 — Replace Dex+glauth with Authentik in `deployments/multi-idp/`; author Authentik blueprint pre-configuring users/groups/SCIM Provider; CI integration
+99. B.7 — Replace Dex+glauth with Authentik in `deployments/multi-idp/`:
+    - [x] Compose stack rewritten (server + worker + redis + dedicated postgres), Authentik blueprint at `deployments/multi-idp/authentik/blueprints/oad.yaml` seeding Users / Groups / Application / OIDC Provider / SCIM Provider, OAD `config.yml` registering Authentik as a JWT issuer + SCIM source, secrets templated in `.env.example`
+    - [ ] CI integration — author a GitHub Actions workflow that brings the stack up, waits for the SCIM provisioning sync to complete, and asserts the resulting `entity` / `relation` / `entity_external_identity` rows match the blueprint fixtures (deferred; tracked separately)
 
 #### Phase 9.C — DB-Authoritative Authorization
 
