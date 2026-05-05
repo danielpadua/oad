@@ -141,9 +141,15 @@ entries:
         authentik_crypto.certificatekeypair,
         [name, "authentik Self-signed Certificate"]
       ]
-      redirect_uris: |
-        http://localhost:8080/callback
-        http://localhost:8080/
+      invalidation_flow: !Find [
+        authentik_flows.flow,
+        [slug, default-provider-invalidation-flow]
+      ]
+      redirect_uris:
+        - url: http://localhost:8080/callback
+          matching_mode: strict
+        - url: http://localhost:8080/
+          matching_mode: strict
       property_mappings:
         - !Find [
             authentik_providers_oauth2.scopemapping,
