@@ -78,6 +78,11 @@ func applyOne(props map[string]any, op PatchOp) error {
 }
 
 func applyAdd(props map[string]any, p parser.Path, raw json.RawMessage) error {
+	if p.Attr == "" {
+		return applyRootObject(raw, func(subPath parser.Path, subVal json.RawMessage) error {
+			return applyAdd(props, subPath, subVal)
+		})
+	}
 	// Filters are not allowed on add for any User attribute in our subset.
 	if p.Filter != nil || p.SubAttr != "" {
 		return ErrPatchNoTarget
@@ -94,6 +99,11 @@ func applyAdd(props map[string]any, p parser.Path, raw json.RawMessage) error {
 }
 
 func applyReplace(props map[string]any, p parser.Path, raw json.RawMessage) error {
+	if p.Attr == "" {
+		return applyRootObject(raw, func(subPath parser.Path, subVal json.RawMessage) error {
+			return applyReplace(props, subPath, subVal)
+		})
+	}
 	// emails[primary eq true].value — replace the persisted primary email.
 	if p.Attr == "emails" && p.SubAttr == "value" && isPrimaryEqTrue(p.Filter) {
 		return setStringProp(props, PropertyKeyEmail, raw)
@@ -121,6 +131,30 @@ func applyRemove(props map[string]any, p parser.Path) error {
 		return nil
 	}
 	return ErrPatchNoTarget
+}
+
+func applyRootObject(raw json.RawMessage, fn func(p parser.Path, v json.RawMessage) error) error {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return fmt.Errorf("%w: expected object when path is empty", ErrPatchInvalidValue)
+	}
+	for k, v := range obj {
+		subPath, err := parser.ParsePath(k)
+		if err != nil {
+			// RFC 7644: ignore unsupported attributes
+			continue
+		}
+		if err := fn(subPath, v); err != nil {
+			if errors.Is(err, ErrPatchNoTarget) {
+				// RFC 7644 §3.5.2: "If the 'value' contains an attribute that is
+				// not supported by the Service Provider or is read-only, the
+				// Service Provider SHOULD ignore the attribute and continue"
+				continue
+			}
+			return err
+		}
+	}
+	return nil
 }
 
 // isPrimaryEqTrue reports whether expr is the AtomExpr `primary eq true`,

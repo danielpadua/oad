@@ -94,7 +94,7 @@ entries:
     attrs:
       attributes:
         oad_external_id: authentik-group-admin
-      users_obj:
+      users:
         - !Find [authentik_core.user, [username, admin@oad.dev]]
 
   - model: authentik_core.group
@@ -104,7 +104,7 @@ entries:
     attrs:
       attributes:
         oad_external_id: authentik-group-editor
-      users_obj:
+      users:
         - !Find [authentik_core.user, [username, editor@oad.dev]]
 
   - model: authentik_core.group
@@ -114,7 +114,7 @@ entries:
     attrs:
       attributes:
         oad_external_id: authentik-group-viewer
-      users_obj:
+      users:
         - !Find [authentik_core.user, [username, viewer@oad.dev]]
         - !Find [authentik_core.user, [username, pdp@oad.dev]]
 

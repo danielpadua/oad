@@ -94,6 +94,11 @@ func applyOne(state *PatchState, op PatchOp) error {
 }
 
 func applyAdd(state *PatchState, p parser.Path, raw json.RawMessage) error {
+	if p.Attr == "" {
+		return applyRootObject(raw, func(subPath parser.Path, subVal json.RawMessage) error {
+			return applyAdd(state, subPath, subVal)
+		})
+	}
 	if p.Filter != nil || p.SubAttr != "" {
 		return ErrPatchNoTarget
 	}
@@ -112,6 +117,11 @@ func applyAdd(state *PatchState, p parser.Path, raw json.RawMessage) error {
 }
 
 func applyReplace(state *PatchState, p parser.Path, raw json.RawMessage) error {
+	if p.Attr == "" {
+		return applyRootObject(raw, func(subPath parser.Path, subVal json.RawMessage) error {
+			return applyReplace(state, subPath, subVal)
+		})
+	}
 	if p.Filter != nil || p.SubAttr != "" {
 		return ErrPatchNoTarget
 	}
@@ -144,6 +154,30 @@ func applyRemove(state *PatchState, p parser.Path) error {
 		return ErrPatchNoTarget
 	}
 	state.MemberIDs = removeMember(state.MemberIDs, target)
+	return nil
+}
+
+func applyRootObject(raw json.RawMessage, fn func(p parser.Path, v json.RawMessage) error) error {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return fmt.Errorf("%w: expected object when path is empty", ErrPatchInvalidValue)
+	}
+	for k, v := range obj {
+		subPath, err := parser.ParsePath(k)
+		if err != nil {
+			// RFC 7644: ignore unsupported attributes
+			continue
+		}
+		if err := fn(subPath, v); err != nil {
+			if errors.Is(err, ErrPatchNoTarget) {
+				// RFC 7644 §3.5.2: "If the 'value' contains an attribute that is
+				// not supported by the Service Provider or is read-only, the
+				// Service Provider SHOULD ignore the attribute and continue"
+				continue
+			}
+			return err
+		}
+	}
 	return nil
 }
 

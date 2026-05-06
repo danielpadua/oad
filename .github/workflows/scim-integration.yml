@@ -1,0 +1,60 @@
+name: SCIM Integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  scim-integration:
+    name: SCIM Provisioning Integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Configure environment variables
+        run: |
+          cp deployments/multi-idp/.env.example deployments/multi-idp/.env
+          # Generate necessary tokens
+          sed -i "s|AUTHENTIK_SECRET_KEY=|AUTHENTIK_SECRET_KEY=$(openssl rand -base64 60 | tr -d '\n')|" deployments/multi-idp/.env
+          sed -i "s|AUTHENTIK_OAD_SCIM_TOKEN=|AUTHENTIK_OAD_SCIM_TOKEN=ci-test-token-1234|" deployments/multi-idp/.env
+          sed -i "s|OAD_SCIM_TOKEN_AUTHENTIK=|OAD_SCIM_TOKEN_AUTHENTIK=ci-test-token-1234|" deployments/multi-idp/.env
+
+      - name: Start the multi-idp stack
+        run: |
+          docker compose -f deployments/multi-idp/docker-compose.yml up -d --build
+
+      - name: Wait for API healthcheck
+        run: |
+          echo "Waiting for OAD API to become healthy..."
+          for i in {1..30}; do
+            if curl -s -f http://localhost:8080/health > /dev/null; then
+              echo "OAD API is healthy!"
+              break
+            fi
+            sleep 2
+          done
+          
+          # If curl failed even after retries, fail the build
+          curl -f http://localhost:8080/health || {
+            echo "API healthcheck failed. Container logs:"
+            docker compose -f deployments/multi-idp/docker-compose.yml logs api
+            exit 1
+          }
+
+      - name: Run SCIM Integration Assertion
+        run: go run scripts/assert_scim_ingest.go
+        env:
+          DATABASE_URL: postgresql://oad:oad@localhost:5432/oad?sslmode=disable
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          echo "Dumping docker compose logs for debugging..."
+          docker compose -f deployments/multi-idp/docker-compose.yml logs

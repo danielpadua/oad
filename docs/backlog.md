@@ -178,7 +178,7 @@
 98. [x] B.6 — `scim-protocol-tester` utility under `deployments/scim-protocol-tester/` — YAML-scenario-driven raw SCIM client for protocol-edge tests (CLI + runner with capture/substitution + partial-body assertions, four bundled scenarios, `make scim-protocol-tester` target)
 99. B.7 — Replace Dex+glauth with Authentik in `deployments/multi-idp/`:
     - [x] Compose stack rewritten (server + worker + redis + dedicated postgres), Authentik blueprint at `deployments/multi-idp/authentik/blueprints/oad.yaml` seeding Users / Groups / Application / OIDC Provider / SCIM Provider, OAD `config.yml` registering Authentik as a JWT issuer + SCIM source, secrets templated in `.env.example`
-    - [ ] CI integration — author a GitHub Actions workflow that brings the stack up, waits for the SCIM provisioning sync to complete, and asserts the resulting `entity` / `relation` / `entity_external_identity` rows match the blueprint fixtures (deferred; tracked separately)
+    - [x] CI integration — author a GitHub Actions workflow that brings the stack up, waits for the SCIM provisioning sync to complete, and asserts the resulting `entity` / `relation` / `entity_external_identity` rows match the blueprint fixtures (deferred; tracked separately)
 
 #### Phase 9.C — DB-Authoritative Authorization
 
