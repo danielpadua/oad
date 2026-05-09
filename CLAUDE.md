@@ -218,12 +218,8 @@ auth:
         jwks_url: https://idp.example.com/realms/oad/protocol/openid-connect/certs
         issuer:   https://idp.example.com/realms/oad
         audience: oad-api
-        # claims_mapping is optional; omit when the IdP emits oad_roles natively.
-        claims_mapping:
-          roles_claim:     groups       # default: oad_roles
-          system_id_claim: x_system_id # default: oad_system_id
-          default_roles:               # applied when roles_claim is absent
-            - viewer
+        # claims_mapping is obsolete as of Phase 9.C — roles and system access
+        # are now resolved from the entity/relation graph, not JWT claims.
       webui:
         authority:  https://idp.example.com/realms/oad
         client_id:  oad-web
@@ -283,14 +279,21 @@ All environment variables use the `OAD_` prefix. The legacy unprefixed names (e.
 
 The API supports four auth modes configured via `OAD_AUTH_MODE`:
 
-- **`jwt`** (default) — validates Bearer tokens against a JWKS endpoint. Extracts `sub`, `oad_roles` (custom claim), and `oad_system_id` (custom claim) into an `Identity`.
+- **`jwt`** (default) — validates Bearer token signature and extracts `sub`; roles and system access are resolved from the entity/relation graph via DB lookup.
 - **`mtls`** — extracts identity from client certificate CN (direct TLS or LB-terminated via header). Maps certificate OUs to roles.
 - **`both`** — tries JWT first, falls back to mTLS.
 - **`none`** — disables authentication (development only; never use in production).
 
-Custom JWT claims used by OAD:
-- `oad_roles` — `[]string` of application roles (`admin`, `editor`, `viewer`).
-- `oad_system_id` — `string` UUID of the scoped system. Empty means platform admin (unrestricted access).
+Active system scope:
+- `X-OAD-System-Id` request header — UUID of the active system scope; validated against the user's `allowed_systems` from DB.
+
+Bootstrap admins (seed platform admins on startup without SCIM provisioning):
+```yaml
+auth:
+  bootstrap_admins:
+    - provider: keycloak
+      subject: <jwt-sub-of-admin-user>
+```
 
 # Authorization model
 

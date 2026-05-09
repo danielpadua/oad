@@ -447,9 +447,19 @@ Platform administrators bypass RLS via the empty-session-variable mode rather th
 
 ### 4.8 Management UI access control
 
-> **Phase C will rewrite this section.** Until DB-authoritative authentication lands, the JWT carries `oad_roles` and `oad_system_id` custom claims. After Phase C, these claims will no longer be read; group membership and system access will be resolved from the entity / relation graph populated by SCIM ingest, and the active system context will be conveyed via the `X-OAD-System-Id` HTTP header. See [db-authoritative-auth.md](design/db-authoritative-auth.md) for the target design.
+The management UI authenticates users via an external IdP (JWT). The JWT proves identity only (`sub`, `iss`, `aud`); group membership and allowed systems are resolved from the entity/relation graph populated by SCIM ingest. The JWT carries no application roles.
 
-The management UI authenticates users via an external IdP (JWT). User roles (`admin`, `editor`, `viewer`) and system assignments are currently conveyed as JWT claims. This avoids a circular dependency where OAD would need to query itself for access control during authentication, and keeps the identity management responsibility with the IdP where it belongs.
+After authentication, the UI calls `GET /api/v1/me` to retrieve the resolved identity:
+
+| Field | Description |
+|---|---|
+| `is_platform_admin` | `true` if the `oad:admin` group is in the user's groups |
+| `groups` | external IDs of all groups the user is `member_of` |
+| `allowed_systems` | entity IDs of all Systems the user can access |
+
+The active system context for a request is conveyed via the `X-OAD-System-Id` HTTP header, validated against the user's allowed systems on every call. Platform admins may set any system ID; scoped users may only set IDs present in `allowed_systems`.
+
+The historic circular-dependency concern (OAD querying itself during authentication) is addressed by the bootstrap admin mechanism: `auth.bootstrap_admins[]` in the server config seeds one or more platform admins on startup, creating entity + external_identity + `oad:admin` relation idempotently. See [db-authoritative-auth.md](design/db-authoritative-auth.md) for the full design.
 
 ### 4.9 Phase A unification: System as entity, `is_builtin`, and the type-check trigger
 
