@@ -173,7 +173,7 @@ export default function EntityTypes() {
   const { data, isLoading } = useEntityTypes()
   const deleteMutation = useDeleteEntityType()
   const { identity } = useAuth()
-  const isPlatformAdmin = identity?.systemId == null
+  const isPlatformAdmin = identity?.isPlatformAdmin ?? false
   const { t } = useTranslation("entityTypes")
   const { t: tc } = useTranslation()
 

@@ -5,20 +5,27 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export function useRole() {
   const { identity } = useAuth();
-  const roles = identity?.roles ?? [];
+  const isPlatformAdmin = identity?.isPlatformAdmin ?? false;
+  const groups = identity?.groups ?? [];
 
   return {
-    hasRole: (role: string) => roles.includes(role),
-    hasAnyRole: (r: string[]) => r.some((role) => roles.includes(role)),
-    isAdmin: roles.includes("admin"),
-    isEditor: roles.includes("editor"),
-    isViewer: roles.includes("viewer"),
-    /** Can create or update records (admin or editor). */
-    canWrite: roles.includes("admin") || roles.includes("editor"),
-    /** Can delete records (admin only). */
-    canDelete: roles.includes("admin"),
-    /** JWT carries no system scope — unrestricted platform access. */
-    isPlatformAdmin: identity !== null && identity.systemId === null,
+    hasRole: (role: string) =>
+      isPlatformAdmin ||
+      groups.includes(`oad:${role}`),
+    hasAnyRole: (r: string[]) =>
+      isPlatformAdmin ||
+      r.some((role) => groups.includes(`oad:${role}`)),
+    isAdmin: isPlatformAdmin,
+    isEditor: isPlatformAdmin || groups.includes("oad:editor"),
+    isViewer:
+      isPlatformAdmin ||
+      groups.includes("oad:editor") ||
+      groups.includes("oad:viewer"),
+    /** Can create or update records (platform admin or editor group). */
+    canWrite: isPlatformAdmin || groups.includes("oad:editor"),
+    /** Can delete records (platform admin only). */
+    canDelete: isPlatformAdmin,
+    isPlatformAdmin,
   };
 }
 

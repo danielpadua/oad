@@ -19,7 +19,7 @@ export function ScopeBanner() {
   const { identity } = useAuth();
   const { activeSystemId } = useScope();
 
-  const isPlatformAdmin = identity !== null && identity.systemId === null;
+  const isPlatformAdmin = identity?.isPlatformAdmin ?? false;
 
   const { data } = useQuery<SystemsResponse, HttpError>({
     queryKey: ["systems"],

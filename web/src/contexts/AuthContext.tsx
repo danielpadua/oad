@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { User } from "oidc-client-ts";
 import { getUserManager, setActiveProviderName } from "@/lib/oidc";
-import { setTokenGetter, setUnauthorizedHandler } from "@/lib/http-client";
+import { http, setTokenGetter, setUnauthorizedHandler, setActiveSystemId } from "@/lib/http-client";
+import type { MeResponse } from "@/lib/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -9,16 +10,19 @@ export interface AuthIdentity {
   sub: string;
   email?: string;
   name?: string;
-  /** OAD application roles extracted from the `oad_roles` JWT claim. */
-  roles: string[];
-  /** System UUID from `oad_system_id` claim; null means platform admin (unrestricted). */
-  systemId: string | null;
+  isPlatformAdmin: boolean;
+  /** Built-in group external IDs (e.g. "oad:admin", "oad:editor", "oad:viewer"). */
+  groups: string[];
+  allowedSystems: string[];
+  /** Currently active system UUID; null means no system scope selected. */
+  activeSystemId: string | null;
 }
 
 interface AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   identity: AuthIdentity | null;
+  setActiveSystem: (id: string | null) => void;
   login: (returnTo?: string, providerName?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -27,26 +31,45 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function userToIdentity(user: User): AuthIdentity {
-  const claims = user.profile;
-  return {
-    sub: claims.sub,
-    email: claims.email,
-    name: claims.name,
-    roles: (claims["oad_roles"] as string[] | undefined) ?? [],
-    systemId: (claims["oad_system_id"] as string | undefined) ?? null,
-  };
+async function fetchMeIdentity(user: User): Promise<AuthIdentity | null> {
+  try {
+    const me = await http.get<MeResponse>("/api/v1/me", { token: user.access_token });
+    const activeSystemId = me.allowed_systems[0] ?? null;
+    return {
+      sub: me.sub,
+      isPlatformAdmin: me.is_platform_admin,
+      groups: me.groups,
+      allowedSystems: me.allowed_systems,
+      activeSystemId,
+    };
+  } catch {
+    return null;
+  }
 }
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [identity, setIdentity] = useState<AuthIdentity | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Keep the http-client token getter in sync with the current user.
   useEffect(() => {
     setTokenGetter(() => user?.access_token ?? null);
+  }, [user]);
+
+  // Fetch /api/v1/me after user is available and update identity + active system.
+  useEffect(() => {
+    if (user && !user.expired) {
+      fetchMeIdentity(user).then((id) => {
+        setIdentity(id);
+        setActiveSystemId(id?.activeSystemId ?? null);
+      });
+    } else {
+      setIdentity(null);
+      setActiveSystemId(null);
+    }
   }, [user]);
 
   // Redirect to /login on 401 — clears OIDC session before redirecting.
@@ -100,12 +123,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await getUserManager().signoutRedirect();
   };
 
+  const setActiveSystem = (id: string | null) => {
+    setIdentity((prev) => (prev ? { ...prev, activeSystemId: id } : null));
+    setActiveSystemId(id);
+  };
+
   return (
     <AuthContext.Provider
       value={{
         isAuthenticated: !!user,
         isLoading,
-        identity: user ? userToIdentity(user) : null,
+        identity,
+        setActiveSystem,
         login,
         logout,
       }}

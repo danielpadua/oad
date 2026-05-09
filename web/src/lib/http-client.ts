@@ -67,6 +67,15 @@ function readStoredAccessToken(): string | null {
   }
 }
 
+// ─── Active system injection ──────────────────────────────────────────────────
+
+let activeSystemId: string | null = null;
+
+/** Called by AuthContext to pin the active system for all subsequent requests. */
+export function setActiveSystemId(id: string | null): void {
+  activeSystemId = id;
+}
+
 // ─── 401 handler ─────────────────────────────────────────────────────────────
 
 // Registered by AuthProvider to redirect to /login on session expiry.
@@ -113,6 +122,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const resolvedToken = token ?? tokenGetter?.() ?? readStoredAccessToken() ?? undefined;
   if (resolvedToken) {
     headers.set("Authorization", `Bearer ${resolvedToken}`);
+  }
+
+  if (activeSystemId) {
+    headers.set("X-OAD-System-Id", activeSystemId);
   }
 
   let response: Response;

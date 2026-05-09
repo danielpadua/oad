@@ -47,7 +47,7 @@ export default function EntityTypeDetail() {
 
   const { data: etd, isLoading, isError } = useEntityType(id!)
   const { identity } = useAuth()
-  const isPlatformAdmin = identity?.systemId == null
+  const isPlatformAdmin = identity?.isPlatformAdmin ?? false
   const canMutate = !!etd && (isPlatformAdmin || etd.scope !== "global")
   const { data: usageData, isLoading: usageLoading } = useEntityUsageCount(
     etd?.type_name

@@ -140,7 +140,9 @@ function UserMenu() {
     : (identity?.email?.[0]?.toUpperCase() ?? "?");
 
   const displayName = identity?.name ?? identity?.email ?? identity?.sub ?? "Unknown";
-  const primaryRole = identity?.roles[0];
+  const primaryRole = identity?.isPlatformAdmin
+    ? "admin"
+    : identity?.groups.find((g) => g.startsWith("oad:"))?.replace("oad:", "");
 
   return (
     <div className="relative">

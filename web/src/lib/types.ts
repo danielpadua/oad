@@ -129,3 +129,21 @@ export interface WebhookDelivery {
   last_response_code: number | null
   created_at: string
 }
+
+export interface ExternalIdentity {
+  provider_name: string
+  external_subject: string
+}
+
+export interface UserAdmin extends Entity {
+  external_identities: ExternalIdentity[]
+}
+
+export interface MeResponse {
+  sub: string;
+  provider: string;
+  entity_id: string;
+  groups: string[];
+  is_platform_admin: boolean;
+  allowed_systems: string[];
+}

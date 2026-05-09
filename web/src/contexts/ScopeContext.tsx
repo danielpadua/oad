@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 interface ScopeContextValue {
   /** Currently active system UUID, or null for unrestricted (all systems) view. */
   activeSystemId: string | null;
-  /** Only callable by platform admins (identity.systemId === null). No-op otherwise. */
+  /** Only callable by platform admins (identity.isPlatformAdmin). No-op otherwise. */
   setActiveSystemId: (id: string | null) => void;
 }
 
@@ -19,20 +19,20 @@ const ScopeContext = createContext<ScopeContextValue | null>(null);
 export function ScopeProvider({ children }: { children: ReactNode }) {
   const { identity } = useAuth();
 
-  // Platform admins (systemId === null) start with no filter; scoped users are fixed.
+  // Platform admins (isPlatformAdmin) start with no filter; scoped users are fixed.
   const [activeSystemId, setActiveSystemIdRaw] = useState<string | null>(
-    identity?.systemId ?? null
+    identity?.activeSystemId ?? null
   );
 
   // Sync when identity changes (login / role switch).
   useEffect(() => {
     if (identity !== null) {
-      setActiveSystemIdRaw(identity.systemId);
+      setActiveSystemIdRaw(identity.activeSystemId);
     }
-  }, [identity?.systemId]);
+  }, [identity?.activeSystemId]);
 
   const setActiveSystemId = (id: string | null) => {
-    if (identity?.systemId === null) {
+    if (identity?.isPlatformAdmin) {
       setActiveSystemIdRaw(id);
     }
   };

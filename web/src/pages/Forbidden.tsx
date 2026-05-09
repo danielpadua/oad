@@ -5,7 +5,9 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export default function Forbidden() {
   const { identity } = useAuth();
-  const roleList = identity?.roles.join(", ") || "none";
+  const roleList = identity?.isPlatformAdmin
+    ? "admin"
+    : (identity?.groups.join(", ") || "none");
 
   return (
     <div className="flex h-screen flex-col items-center justify-center gap-6 bg-background px-4 text-center">

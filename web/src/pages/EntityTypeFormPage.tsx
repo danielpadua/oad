@@ -67,7 +67,7 @@ function EntityTypeFormContent({ etd }: FormContentProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { identity } = useAuth()
-  const isPlatformAdmin = identity?.systemId == null
+  const isPlatformAdmin = identity?.isPlatformAdmin ?? false
 
   const steps: StepConfig[] = isEdit
     ? [

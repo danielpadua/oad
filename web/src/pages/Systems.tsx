@@ -378,7 +378,7 @@ export default function Systems() {
   const { data, isLoading } = useSystems()
   const patchMutation = usePatchSystem()
   const { identity } = useAuth()
-  const isPlatformAdmin = identity?.systemId == null
+  const isPlatformAdmin = identity?.isPlatformAdmin ?? false
 
   const [registerOpen, setRegisterOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<System | undefined>()
