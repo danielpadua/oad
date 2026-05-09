@@ -30,6 +30,7 @@ type Dependencies struct {
 	MetricsRegistry prometheus.Registerer   // nil defaults to prometheus.DefaultRegisterer
 	JWTAuth         *auth.JWTAuthenticator  // nil when AUTH_MODE is "mtls"
 	MTLSAuth        *auth.MTLSAuthenticator // nil when AUTH_MODE is "jwt"
+	Resolver        *auth.IdentityResolver  // DB-backed identity resolver (Phase 9.C)
 
 	// Phase 2 handlers — Schema Registry
 	EntityTypeHandler    *handler.EntityTypeHandler
@@ -64,6 +65,12 @@ type Dependencies struct {
 
 	// Phase 9.B.4 — SCIM /Groups handler (nil disables /Groups routes).
 	SCIMGroupsHandler *scimhandler.GroupsHandler
+
+	// Phase 9.C — /me endpoint
+	MeHandler *handler.MeHandler
+
+	// Phase 9.D — Admin UI for Users
+	UsersHandler *handler.UsersHandler
 
 	// Embedded Management UI — SPA catch-all (nil disables the UI).
 	WebUIHandler http.Handler
@@ -112,7 +119,10 @@ func NewRouter(deps Dependencies) http.Handler {
 
 	// /api/v1 — all domain endpoints require authentication.
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Use(middleware.Authentication(deps.JWTAuth, deps.MTLSAuth, deps.Config.Auth.Mode))
+		r.Use(middleware.Authentication(deps.JWTAuth, deps.MTLSAuth, deps.Resolver, deps.Config.Auth.Mode))
+
+		// ── Phase 9.C — Caller identity introspection ─────────────────────
+		r.Get("/me", deps.MeHandler.Get)
 
 		// ── Phase 2 — Schema Registry ────────────────────────────────────
 		// All schema registry endpoints require the "admin" role.
@@ -164,6 +174,12 @@ func NewRouter(deps Dependencies) http.Handler {
 					})
 				})
 			})
+		})
+
+		// ── Phase 9.D — Admin UI for Users ───────────────────────────────
+		r.Route("/users", func(r chi.Router) {
+			r.Use(middleware.RequireRole("admin"))
+			r.Get("/", deps.UsersHandler.List)
 		})
 
 		// ── Dashboard stats ──────────────────────────────────────────────

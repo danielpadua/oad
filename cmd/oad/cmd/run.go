@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
 	"github.com/danielpadua/oad/internal/api"
@@ -99,23 +100,19 @@ func runServer() error {
 
 	slog.Info("migrations applied successfully")
 
-	var jwtAuth *auth.JWTAuthenticator
-	var mtlsAuth *auth.MTLSAuthenticator
-
-	switch cfg.Auth.Mode {
-	case "jwt", "both":
-		jwtAuth, err = buildJWTAuthenticator(ctx, cfg.Auth.Providers)
-		if err != nil {
-			return fmt.Errorf("initializing JWT authenticator: %w", err)
-		}
-		if cfg.Auth.Mode == "both" {
-			mtlsAuth = auth.NewMTLSAuthenticator(cfg.Auth.MTLSHeader)
-		}
-	case "mtls":
-		mtlsAuth = auth.NewMTLSAuthenticator(cfg.Auth.MTLSHeader)
+	jwtAuth, mtlsAuth, err := buildAuthenticators(ctx, cfg)
+	if err != nil {
+		return err
 	}
 
 	auditSvc := audit.NewService()
+
+	resolverRepo := auth.NewResolverRepository(pool)
+	identityResolver := auth.NewIdentityResolver(resolverRepo)
+
+	if err := applyBootstrapAdmins(ctx, pool, cfg.Auth.BootstrapAdmins); err != nil {
+		return err
+	}
 
 	entityTypeRepo := entitytype.NewRepository()
 	entityTypeSvc := entitytype.NewService(pool, entityTypeRepo, auditSvc)
@@ -165,6 +162,7 @@ func runServer() error {
 		Logger:   slog.Default(),
 		JWTAuth:  jwtAuth,
 		MTLSAuth: mtlsAuth,
+		Resolver: identityResolver,
 
 		EntityTypeHandler:    handler.NewEntityTypeHandler(entityTypeSvc),
 		SystemHandler:        handler.NewSystemHandler(systemSvc),
@@ -183,6 +181,7 @@ func runServer() error {
 
 		ConfigHandler: handler.NewConfigHandler(cfg),
 
+		MeHandler:    handler.NewMeHandler(),
 		UsersHandler: usersHandler,
 
 		SCIMRegistry:      scimRegistry,
@@ -243,6 +242,27 @@ func runServer() error {
 	return nil
 }
 
+// buildAuthenticators constructs JWT and mTLS authenticators based on the
+// configured auth mode. Either value may be nil when that mode is inactive.
+func buildAuthenticators(ctx context.Context, cfg *config.Config) (*auth.JWTAuthenticator, *auth.MTLSAuthenticator, error) {
+	var jwtAuth *auth.JWTAuthenticator
+	var mtlsAuth *auth.MTLSAuthenticator
+	switch cfg.Auth.Mode {
+	case "jwt", "both":
+		var err error
+		jwtAuth, err = buildJWTAuthenticator(ctx, cfg.Auth.Providers)
+		if err != nil {
+			return nil, nil, fmt.Errorf("initializing JWT authenticator: %w", err)
+		}
+		if cfg.Auth.Mode == "both" {
+			mtlsAuth = auth.NewMTLSAuthenticator(cfg.Auth.MTLSHeader)
+		}
+	case "mtls":
+		mtlsAuth = auth.NewMTLSAuthenticator(cfg.Auth.MTLSHeader)
+	}
+	return jwtAuth, mtlsAuth, nil
+}
+
 // buildSCIMRegistry instantiates the SCIM tenant token registry from
 // configured providers. Providers without scim.enabled or with an empty
 // token are skipped (the latter logs a warning — usually means a missing
@@ -267,6 +287,24 @@ func buildSCIMRegistry(providers []config.ProviderConfig) (*scimauth.Registry, e
 		slog.Info("SCIM tenant tokens registered", "count", registry.Size())
 	}
 	return registry, nil
+}
+
+// applyBootstrapAdmins seeds platform admin identities on startup.
+// It is idempotent: existing entries are left unchanged.
+func applyBootstrapAdmins(ctx context.Context, pool *pgxpool.Pool, admins []config.BootstrapAdmin) error {
+	entries := make([]auth.BootstrapEntry, len(admins))
+	for i, ba := range admins {
+		entries[i] = auth.BootstrapEntry{Provider: ba.Provider, Subject: ba.Subject}
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	slog.Info("applying bootstrap admins", "count", len(entries))
+	bootstrapRepo := auth.NewBootstrapRepository(pool)
+	if err := auth.NewBootstrap(bootstrapRepo).Apply(ctx, entries); err != nil {
+		return fmt.Errorf("bootstrap admins: %w", err)
+	}
+	return nil
 }
 
 func buildJWTAuthenticator(ctx context.Context, providers []config.ProviderConfig) (*auth.JWTAuthenticator, error) {
