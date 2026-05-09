@@ -109,6 +109,7 @@ func runServer() error {
 
 	resolverRepo := auth.NewResolverRepository(pool)
 	identityResolver := auth.NewIdentityResolver(resolverRepo)
+	identityCache := auth.NewIdentityCache(identityResolver, cfg.Auth.IdentityCacheSize, cfg.Auth.IdentityCacheTTL)
 
 	if err := applyBootstrapAdmins(ctx, pool, cfg.Auth.BootstrapAdmins); err != nil {
 		return err
@@ -157,12 +158,12 @@ func runServer() error {
 	scimGroupsHandler := scimhandler.NewGroupsHandler(scimGroupsSvc)
 
 	router := api.NewRouter(api.Dependencies{
-		DB:       pool,
-		Config:   cfg,
-		Logger:   slog.Default(),
-		JWTAuth:  jwtAuth,
-		MTLSAuth: mtlsAuth,
-		Resolver: identityResolver,
+		DB:            pool,
+		Config:        cfg,
+		Logger:        slog.Default(),
+		JWTAuth:       jwtAuth,
+		MTLSAuth:      mtlsAuth,
+		IdentityCache: identityCache,
 
 		EntityTypeHandler:    handler.NewEntityTypeHandler(entityTypeSvc),
 		SystemHandler:        handler.NewSystemHandler(systemSvc),

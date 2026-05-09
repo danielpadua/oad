@@ -16,7 +16,7 @@ import (
 func Authentication(
 	jwtAuth *auth.JWTAuthenticator,
 	mtlsAuth *auth.MTLSAuthenticator,
-	resolver *auth.IdentityResolver,
+	cache *auth.IdentityCache,
 	mode string,
 ) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -26,11 +26,11 @@ func Authentication(
 
 			switch mode {
 			case "jwt":
-				identity, err = resolveJWT(r, jwtAuth, resolver)
+				identity, err = resolveJWT(r, jwtAuth, cache)
 			case "mtls":
 				identity, err = mtlsAuth.Authenticate(r)
 			case "both":
-				identity, err = resolveJWT(r, jwtAuth, resolver)
+				identity, err = resolveJWT(r, jwtAuth, cache)
 				if err != nil && mtlsAuth != nil {
 					identity, err = mtlsAuth.Authenticate(r)
 				}
@@ -59,7 +59,7 @@ func Authentication(
 	}
 }
 
-func resolveJWT(r *http.Request, jwtAuth *auth.JWTAuthenticator, resolver *auth.IdentityResolver) (*auth.Identity, error) {
+func resolveJWT(r *http.Request, jwtAuth *auth.JWTAuthenticator, cache *auth.IdentityCache) (*auth.Identity, error) {
 	header := r.Header.Get("Authorization")
 	if header == "" {
 		return nil, errMissingAuth
@@ -72,7 +72,7 @@ func resolveJWT(r *http.Request, jwtAuth *auth.JWTAuthenticator, resolver *auth.
 	if err != nil {
 		return nil, err
 	}
-	return resolver.Resolve(r.Context(), raw.Provider, raw.Subject)
+	return cache.Resolve(r.Context(), raw.Provider, raw.Subject)
 }
 
 var errMissingAuth = &authError{msg: "missing or malformed Authorization header"}

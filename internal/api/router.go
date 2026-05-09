@@ -30,7 +30,7 @@ type Dependencies struct {
 	MetricsRegistry prometheus.Registerer   // nil defaults to prometheus.DefaultRegisterer
 	JWTAuth         *auth.JWTAuthenticator  // nil when AUTH_MODE is "mtls"
 	MTLSAuth        *auth.MTLSAuthenticator // nil when AUTH_MODE is "jwt"
-	Resolver        *auth.IdentityResolver  // DB-backed identity resolver (Phase 9.C)
+	IdentityCache   *auth.IdentityCache     // LRU+TTL cache wrapping the identity resolver (Phase 9.C)
 
 	// Phase 2 handlers — Schema Registry
 	EntityTypeHandler    *handler.EntityTypeHandler
@@ -119,7 +119,7 @@ func NewRouter(deps Dependencies) http.Handler {
 
 	// /api/v1 — all domain endpoints require authentication.
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Use(middleware.Authentication(deps.JWTAuth, deps.MTLSAuth, deps.Resolver, deps.Config.Auth.Mode))
+		r.Use(middleware.Authentication(deps.JWTAuth, deps.MTLSAuth, deps.IdentityCache, deps.Config.Auth.Mode))
 
 		// ── Phase 9.C — Caller identity introspection ─────────────────────
 		r.Get("/me", deps.MeHandler.Get)

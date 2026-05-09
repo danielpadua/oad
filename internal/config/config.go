@@ -28,10 +28,12 @@ type DatabaseConfig struct {
 // Mode selects accepted credential types: "jwt", "mtls", "both", or "none".
 // Providers defines the set of trusted Identity Providers (for jwt / both modes).
 type AuthConfig struct {
-	Mode            string
-	MTLSHeader      string
-	Providers       []ProviderConfig
-	BootstrapAdmins []BootstrapAdmin
+	Mode              string
+	MTLSHeader        string
+	Providers         []ProviderConfig
+	BootstrapAdmins   []BootstrapAdmin
+	IdentityCacheTTL  time.Duration // default 30s
+	IdentityCacheSize int           // default 10000
 }
 
 // BootstrapAdmin seeds a platform admin user on startup.

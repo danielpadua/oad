@@ -43,6 +43,8 @@ func applyDefaults(cfg *Config) {
 	cfg.Database.MinConns = 5
 	cfg.Auth.Mode = "jwt"
 	cfg.Auth.MTLSHeader = "X-Client-Cert"
+	cfg.Auth.IdentityCacheTTL = 30 * time.Second
+	cfg.Auth.IdentityCacheSize = 10_000
 	cfg.Log.Level = "info"
 	cfg.Log.Format = "json"
 }
@@ -158,6 +160,16 @@ func applyAuthEnv(cfg *Config) {
 	}
 	if v := os.Getenv("OAD_MTLS_HEADER"); v != "" {
 		cfg.Auth.MTLSHeader = v
+	}
+	if v := os.Getenv("OAD_IDENTITY_CACHE_TTL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Auth.IdentityCacheTTL = d
+		}
+	}
+	if v := os.Getenv("OAD_IDENTITY_CACHE_SIZE"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.Auth.IdentityCacheSize = n
+		}
 	}
 }
 
