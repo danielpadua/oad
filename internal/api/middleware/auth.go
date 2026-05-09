@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/danielpadua/oad/internal/api/response"
 	"github.com/danielpadua/oad/internal/apierr"
 	"github.com/danielpadua/oad/internal/auth"
@@ -53,6 +55,20 @@ func Authentication(
 				return
 			}
 
+			// Parse X-OAD-System-Id header and set ActiveSystemID on the identity.
+			if headerVal := r.Header.Get("X-OAD-System-Id"); headerVal != "" {
+				systemID, parseErr := uuid.Parse(headerVal)
+				if parseErr != nil {
+					response.Error(w, apierr.BadRequest("X-OAD-System-Id must be a valid UUID"))
+					return
+				}
+				if !identity.IsPlatformAdmin && !systemInAllowed(systemID, identity.AllowedSystems) {
+					response.Error(w, apierr.Forbidden("X-OAD-System-Id not in allowed systems"))
+					return
+				}
+				identity.ActiveSystemID = &systemID
+			}
+
 			ctx := auth.WithIdentity(r.Context(), identity)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -73,6 +89,15 @@ func resolveJWT(r *http.Request, jwtAuth *auth.JWTAuthenticator, cache *auth.Ide
 		return nil, err
 	}
 	return cache.Resolve(r.Context(), raw.Provider, raw.Subject)
+}
+
+func systemInAllowed(id uuid.UUID, allowed []uuid.UUID) bool {
+	for _, a := range allowed {
+		if a == id {
+			return true
+		}
+	}
+	return false
 }
 
 var errMissingAuth = &authError{msg: "missing or malformed Authorization header"}

@@ -3,8 +3,6 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/danielpadua/oad/internal/api/response"
 	"github.com/danielpadua/oad/internal/apierr"
 	"github.com/danielpadua/oad/internal/auth"
@@ -67,12 +65,10 @@ func RequirePlatformAdmin(next http.Handler) http.Handler {
 	})
 }
 
-// RequireSystemScope returns middleware that verifies the caller is authorized
-// for the system identified by the given URL parameter. Platform admins bypass.
-// NOTE: Until IdentityResolver is wired (phase 9.C Task 9), non-admin callers
-// have nil ActiveSystemID and this check passes through. The gap is closed when
-// X-OAD-System-Id header validation populates ActiveSystemID.
-func RequireSystemScope(paramName string) func(http.Handler) http.Handler {
+// RequireSystemScope requires the X-OAD-System-Id header to have been set
+// and validated by the Authentication middleware. Platform admins must also
+// send the header to pin an active system when accessing scoped resources.
+func RequireSystemScope(_ string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			identity, ok := auth.IdentityFromContext(r.Context())
@@ -80,19 +76,10 @@ func RequireSystemScope(paramName string) func(http.Handler) http.Handler {
 				response.Error(w, apierr.Unauthorized("missing identity"))
 				return
 			}
-
-			// Platform admins have unrestricted system access.
-			if identity.IsPlatformAdmin {
-				next.ServeHTTP(w, r)
+			if identity.ActiveSystemID == nil {
+				response.Error(w, apierr.BadRequest("X-OAD-System-Id header required for this endpoint"))
 				return
 			}
-
-			requested := chi.URLParam(r, paramName)
-			if requested != "" && identity.ActiveSystemID != nil && requested != identity.ActiveSystemID.String() {
-				response.Error(w, apierr.Forbidden("access denied to system "+requested))
-				return
-			}
-
 			next.ServeHTTP(w, r)
 		})
 	}

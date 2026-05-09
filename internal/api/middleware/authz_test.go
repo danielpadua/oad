@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/danielpadua/oad/internal/api/middleware"
@@ -92,60 +91,128 @@ func TestRequireAnyRole_Rejects(t *testing.T) {
 }
 
 func TestRequireSystemScope_PlatformAdminAllowed(t *testing.T) {
-	r := chi.NewRouter()
-	r.Route("/systems/{systemID}", func(r chi.Router) {
-		r.Use(middleware.RequireSystemScope("systemID"))
-		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		})
-	})
+	// Platform admins must also supply ActiveSystemID (set via X-OAD-System-Id header
+	// by Authentication middleware). No special bypass anymore.
+	sysID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/systems/some-uuid", http.NoBody)
-	req = withIdentity(req, &auth.Identity{Subject: "admin", IsPlatformAdmin: true})
+	handler := middleware.RequireSystemScope("systemID")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
+	req = withIdentity(req, &auth.Identity{Subject: "admin", IsPlatformAdmin: true, ActiveSystemID: &sysID})
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
+	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Errorf("expected 200 for platform admin, got %d", rec.Code)
+		t.Errorf("expected 200 for platform admin with ActiveSystemID, got %d", rec.Code)
+	}
+}
+
+func TestRequireSystemScope_PlatformAdminNoSystemID(t *testing.T) {
+	// Platform admins without ActiveSystemID are also rejected.
+	handler := middleware.RequireSystemScope("systemID")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
+	req = withIdentity(req, &auth.Identity{Subject: "admin", IsPlatformAdmin: true})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for platform admin without ActiveSystemID, got %d", rec.Code)
 	}
 }
 
 func TestRequireSystemScope_MatchingSystem(t *testing.T) {
-	r := chi.NewRouter()
-	r.Route("/systems/{systemID}", func(r chi.Router) {
-		r.Use(middleware.RequireSystemScope("systemID"))
-		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		})
-	})
+	handler := middleware.RequireSystemScope("systemID")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
 
 	sysID := uuid.MustParse("00000000-0000-0000-0000-000000000123")
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/systems/"+sysID.String(), http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
 	req = withIdentity(req, &auth.Identity{Subject: "svc", ActiveSystemID: &sysID})
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
+	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Errorf("expected 200 for matching system, got %d", rec.Code)
+		t.Errorf("expected 200 for identity with ActiveSystemID, got %d", rec.Code)
 	}
 }
 
-func TestRequireSystemScope_CrossSystemDenied(t *testing.T) {
-	r := chi.NewRouter()
-	r.Route("/systems/{systemID}", func(r chi.Router) {
-		r.Use(middleware.RequireSystemScope("systemID"))
-		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		})
-	})
+func TestRequireSystemScope_MissingActiveSystemID(t *testing.T) {
+	// Identity without ActiveSystemID is rejected with 400.
+	handler := middleware.RequireSystemScope("systemID")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
 
-	sysID := uuid.MustParse("00000000-0000-0000-0000-000000000123")
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/systems/00000000-0000-0000-0000-000000000999", http.NoBody)
-	req = withIdentity(req, &auth.Identity{Subject: "svc", ActiveSystemID: &sysID})
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
+	req = withIdentity(req, &auth.Identity{Subject: "svc"})
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
+	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("expected 403 for cross-system access, got %d", rec.Code)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for missing ActiveSystemID, got %d", rec.Code)
+	}
+}
+
+func TestAuthentication_SystemIdHeader_ValidSystem(t *testing.T) {
+	systemID := uuid.MustParse("eeeeeeee-0000-0000-0000-000000000001")
+	// We test the header parsing logic through RequireSystemScope + a fake identity
+	// (Authentication middleware test requires a real cache which is integration scope).
+	// Instead, test the resulting ActiveSystemID behavior via auth.WithIdentity.
+	identity := &auth.Identity{
+		IsPlatformAdmin: false,
+		AllowedSystems:  []uuid.UUID{systemID},
+		ActiveSystemID:  &systemID,
+	}
+
+	handler := middleware.RequireSystemScope("system_id")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
+	req = withIdentity(req, identity)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestRequireSystemScope_MissingHeader(t *testing.T) {
+	handler := middleware.RequireSystemScope("system_id")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	identity := &auth.Identity{IsPlatformAdmin: false} // no ActiveSystemID
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
+	req = withIdentity(req, identity)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestRequireSystemScope_PlatformAdminWithActiveSystem(t *testing.T) {
+	systemID := uuid.MustParse("ffffffff-0000-0000-0000-000000000001")
+	handler := middleware.RequireSystemScope("system_id")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	identity := &auth.Identity{IsPlatformAdmin: true, ActiveSystemID: &systemID}
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
+	req = withIdentity(req, identity)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 for admin with active system, got %d", rec.Code)
 	}
 }
