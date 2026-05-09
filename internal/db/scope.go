@@ -45,5 +45,9 @@ func WithSystemScope(ctx context.Context, pool *pgxpool.Pool, systemID string, f
 // entry point for handlers that need RLS-scoped database access.
 func WithAuthScope(ctx context.Context, pool *pgxpool.Pool, fn func(pgx.Tx) error) error {
 	identity := auth.MustIdentityFromContext(ctx)
-	return WithSystemScope(ctx, pool, identity.SystemID, fn)
+	systemID := ""
+	if identity.ActiveSystemID != nil {
+		systemID = identity.ActiveSystemID.String()
+	}
+	return WithSystemScope(ctx, pool, systemID, fn)
 }

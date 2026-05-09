@@ -30,10 +30,18 @@ func (a *MTLSAuthenticator) Authenticate(r *http.Request) (*Identity, error) {
 	// Direct TLS termination: peer certificates are available.
 	if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
 		cert := r.TLS.PeerCertificates[0]
+		ous := cert.Subject.OrganizationalUnit
+		isPlatformAdmin := false
+		for _, ou := range ous {
+			if ou == "admin" {
+				isPlatformAdmin = true
+				break
+			}
+		}
 		return &Identity{
-			Subject:  cert.Subject.CommonName,
-			Roles:    extractRolesFromCert(cert.Subject.OrganizationalUnit),
-			AuthMode: "mtls",
+			Subject:         cert.Subject.CommonName,
+			IsPlatformAdmin: isPlatformAdmin,
+			AuthMode:        "mtls",
 		}, nil
 	}
 
@@ -47,17 +55,4 @@ func (a *MTLSAuthenticator) Authenticate(r *http.Request) (*Identity, error) {
 		Subject:  cn,
 		AuthMode: "mtls",
 	}, nil
-}
-
-// extractRolesFromCert maps certificate OU fields to OAD roles.
-// OUs matching known role names are included; others are ignored.
-func extractRolesFromCert(ous []string) []string {
-	validRoles := map[string]bool{"admin": true, "editor": true, "viewer": true}
-	var roles []string
-	for _, ou := range ous {
-		if validRoles[ou] {
-			roles = append(roles, ou)
-		}
-	}
-	return roles
 }

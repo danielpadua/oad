@@ -116,10 +116,12 @@ func (a *JWTAuthenticator) Authenticate(ctx context.Context, tokenString string)
 	}
 	systemID, _ := extractString(token, systemIDClaim)
 
+	// TODO(phase-9c): populate EntityID, Groups, IsPlatformAdmin via DB resolver.
+	// For now, preserve legacy claim values in Subject and AuthMode only.
+	_ = roles
+	_ = systemID
 	return &Identity{
 		Subject:  sub,
-		Roles:    roles,
-		SystemID: systemID,
 		AuthMode: "jwt",
 	}, nil
 }

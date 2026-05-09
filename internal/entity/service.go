@@ -334,13 +334,10 @@ func validateCreateRequest(req CreateRequest) *apierr.APIError {
 // Platform admins pass through whatever the body specifies.
 func resolveEffectiveSystemID(ctx context.Context, reqSystemID *uuid.UUID) (*uuid.UUID, *apierr.APIError) {
 	identity, ok := auth.IdentityFromContext(ctx)
-	if !ok || identity.SystemID == "" {
+	if !ok || identity.ActiveSystemID == nil {
 		return reqSystemID, nil
 	}
-	callerSys, err := uuid.Parse(identity.SystemID)
-	if err != nil {
-		return nil, apierr.Unauthorized("invalid system scope in identity")
-	}
+	callerSys := *identity.ActiveSystemID
 	if reqSystemID != nil && *reqSystemID != callerSys {
 		return nil, apierr.Forbidden("cannot target a system outside caller scope")
 	}

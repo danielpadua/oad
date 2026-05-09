@@ -97,11 +97,8 @@ func (s *Service) Filter(ctx context.Context, params FilterParams) (*FilterResul
 func (s *Service) ListChangelog(ctx context.Context, params ChangelogParams) (*ChangelogResult, error) {
 	// Enforce system isolation: system-scoped callers see only their own system's events.
 	identity := auth.MustIdentityFromContext(ctx)
-	if identity.SystemID != "" {
-		callerSysID, err := uuid.Parse(identity.SystemID)
-		if err != nil {
-			return nil, apierr.Internal("invalid system_id in token")
-		}
+	if identity.ActiveSystemID != nil {
+		callerSysID := *identity.ActiveSystemID
 		// If the caller explicitly requested a different system, reject it.
 		if params.SystemID != nil && *params.SystemID != callerSysID {
 			return nil, apierr.Forbidden("system-scoped callers may only query their own system's changelog")
@@ -142,11 +139,8 @@ func (s *Service) ListChangelog(ctx context.Context, params ChangelogParams) (*C
 func (s *Service) Export(ctx context.Context, params ExportParams) (*ExportResult, error) {
 	// Derive system context for relation scoping from auth identity.
 	identity := auth.MustIdentityFromContext(ctx)
-	if identity.SystemID != "" && params.SystemID == nil {
-		sysID, err := uuid.Parse(identity.SystemID)
-		if err != nil {
-			return nil, apierr.Internal("invalid system_id in token")
-		}
+	if identity.ActiveSystemID != nil && params.SystemID == nil {
+		sysID := *identity.ActiveSystemID
 		params.SystemID = &sysID
 	}
 
@@ -188,17 +182,13 @@ func (s *Service) LogRetrieval(ctx context.Context, queryParams, returnedRefs js
 }
 
 // assertSystemAccess ensures system-scoped callers may only request data for their
-// own system. Platform admins (empty SystemID in token) bypass this check.
+// own system. Platform admins bypass this check.
 func (s *Service) assertSystemAccess(ctx context.Context, requestedSystemID *uuid.UUID) *apierr.APIError {
 	identity := auth.MustIdentityFromContext(ctx)
-	if identity.SystemID == "" || requestedSystemID == nil {
+	if identity.IsPlatformAdmin || identity.ActiveSystemID == nil || requestedSystemID == nil {
 		return nil // admin, or no system context requested
 	}
-	callerSysID, err := uuid.Parse(identity.SystemID)
-	if err != nil {
-		return apierr.Internal("invalid system_id in token")
-	}
-	if callerSysID != *requestedSystemID {
+	if *identity.ActiveSystemID != *requestedSystemID {
 		return apierr.Forbidden("system-scoped callers may only request their own system's data")
 	}
 	return nil
@@ -216,8 +206,9 @@ func (s *Service) logRetrieval(ctx context.Context, systemID *uuid.UUID, queryPa
 	if systemID != nil {
 		sid := systemID.String()
 		entry.SystemID = &sid
-	} else if identity.SystemID != "" {
-		entry.SystemID = &identity.SystemID
+	} else if identity.ActiveSystemID != nil {
+		sid := identity.ActiveSystemID.String()
+		entry.SystemID = &sid
 	}
 	if err := s.repo.WriteLog(ctx, s.pool, entry); err != nil {
 		slog.WarnContext(ctx, "failed to write retrieval log", "error", err)

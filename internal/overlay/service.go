@@ -129,11 +129,8 @@ func (s *Service) ListByEntity(ctx context.Context, entityID uuid.UUID, params L
 	// filter after the paginated query so the count stays consistent with the
 	// filtered view.
 	identity := auth.MustIdentityFromContext(ctx)
-	if identity.SystemID != "" {
-		callerSysID, parseErr := uuid.Parse(identity.SystemID)
-		if parseErr != nil {
-			return nil, apierr.Internal("invalid system_id in token")
-		}
+	if identity.ActiveSystemID != nil {
+		callerSysID := *identity.ActiveSystemID
 		// A system can have at most one overlay per entity (UNIQUE constraint),
 		// so the result set is always 0 or 1 items. Fetch without pagination and
 		// wrap in the standard result shape.
@@ -269,16 +266,13 @@ func (s *Service) Delete(ctx context.Context, entityID, overlayID uuid.UUID) err
 // (no system scope), since platform admins cannot own overlays (FR-OVL-008).
 func (s *Service) resolveCallerSystem(ctx context.Context) (uuid.UUID, string, *apierr.APIError) {
 	identity := auth.MustIdentityFromContext(ctx)
-	if identity.SystemID == "" {
+	if identity.ActiveSystemID == nil {
 		return uuid.Nil, "", apierr.Forbidden("a system scope is required to manage property overlays")
 	}
-	systemID, err := uuid.Parse(identity.SystemID)
-	if err != nil {
-		return uuid.Nil, "", apierr.Internal("invalid system_id in token")
-	}
+	systemID := *identity.ActiveSystemID
 
 	var name string
-	err = s.pool.QueryRow(ctx,
+	err := s.pool.QueryRow(ctx,
 		`SELECT e.properties->>'name'
 		 FROM entity e
 		 JOIN entity_type_definition t ON t.id = e.type_id
@@ -335,17 +329,13 @@ func (s *Service) resolveOverlaySchema(ctx context.Context, systemID, entityType
 }
 
 // assertSystemAccess checks that the caller's system scope matches the overlay's
-// system. Platform admins (empty SystemID) bypass the check.
+// system. Platform admins bypass the check.
 func (s *Service) assertSystemAccess(ctx context.Context, overlaySystemID uuid.UUID) *apierr.APIError {
 	identity := auth.MustIdentityFromContext(ctx)
-	if identity.SystemID == "" {
-		return nil // platform admin
+	if identity.IsPlatformAdmin {
+		return nil // platform admin — unrestricted access
 	}
-	callerSysID, err := uuid.Parse(identity.SystemID)
-	if err != nil {
-		return apierr.Internal("invalid system_id in token")
-	}
-	if callerSysID != overlaySystemID {
+	if identity.ActiveSystemID == nil || *identity.ActiveSystemID != overlaySystemID {
 		return apierr.NotFound("property overlay")
 	}
 	return nil

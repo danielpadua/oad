@@ -71,9 +71,10 @@ func (s *Service) Write(ctx context.Context, tx pgx.Tx, entry Entry) error {
 // delegating to Write.
 func (s *Service) WriteFromContext(ctx context.Context, tx pgx.Tx, entry Entry) error {
 	identity := auth.MustIdentityFromContext(ctx)
-	entry.Actor = identity.Subject
-	if identity.SystemID != "" {
-		entry.SystemID = &identity.SystemID
+	entry.Actor = identity.ActorString()
+	if identity.ActiveSystemID != nil {
+		sysIDStr := identity.ActiveSystemID.String()
+		entry.SystemID = &sysIDStr
 	}
 	return s.Write(ctx, tx, entry)
 }

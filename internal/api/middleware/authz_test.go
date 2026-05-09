@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/danielpadua/oad/internal/api/middleware"
 	"github.com/danielpadua/oad/internal/auth"
@@ -22,7 +23,7 @@ func TestRequireRole_Allows(t *testing.T) {
 	}))
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
-	req = withIdentity(req, &auth.Identity{Subject: "u", Roles: []string{"admin"}})
+	req = withIdentity(req, &auth.Identity{Subject: "u", IsPlatformAdmin: true})
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -37,7 +38,7 @@ func TestRequireRole_Rejects(t *testing.T) {
 	}))
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
-	req = withIdentity(req, &auth.Identity{Subject: "u", Roles: []string{"viewer"}})
+	req = withIdentity(req, &auth.Identity{Subject: "u", Groups: []string{"oad:viewer"}})
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -66,7 +67,7 @@ func TestRequireAnyRole_Allows(t *testing.T) {
 	}))
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
-	req = withIdentity(req, &auth.Identity{Subject: "u", Roles: []string{"editor"}})
+	req = withIdentity(req, &auth.Identity{Subject: "u", Groups: []string{"oad:editor"}})
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -81,7 +82,7 @@ func TestRequireAnyRole_Rejects(t *testing.T) {
 	}))
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
-	req = withIdentity(req, &auth.Identity{Subject: "u", Roles: []string{"viewer"}})
+	req = withIdentity(req, &auth.Identity{Subject: "u", Groups: []string{"oad:viewer"}})
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -100,7 +101,7 @@ func TestRequireSystemScope_PlatformAdminAllowed(t *testing.T) {
 	})
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/systems/some-uuid", http.NoBody)
-	req = withIdentity(req, &auth.Identity{Subject: "admin", SystemID: ""})
+	req = withIdentity(req, &auth.Identity{Subject: "admin", IsPlatformAdmin: true})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -118,8 +119,9 @@ func TestRequireSystemScope_MatchingSystem(t *testing.T) {
 		})
 	})
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/systems/sys-123", http.NoBody)
-	req = withIdentity(req, &auth.Identity{Subject: "svc", SystemID: "sys-123"})
+	sysID := uuid.MustParse("00000000-0000-0000-0000-000000000123")
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/systems/"+sysID.String(), http.NoBody)
+	req = withIdentity(req, &auth.Identity{Subject: "svc", ActiveSystemID: &sysID})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -137,8 +139,9 @@ func TestRequireSystemScope_CrossSystemDenied(t *testing.T) {
 		})
 	})
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/systems/sys-other", http.NoBody)
-	req = withIdentity(req, &auth.Identity{Subject: "svc", SystemID: "sys-123"})
+	sysID := uuid.MustParse("00000000-0000-0000-0000-000000000123")
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/systems/00000000-0000-0000-0000-000000000999", http.NoBody)
+	req = withIdentity(req, &auth.Identity{Subject: "svc", ActiveSystemID: &sysID})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 

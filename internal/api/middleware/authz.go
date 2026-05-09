@@ -50,8 +50,8 @@ func RequireAnyRole(roles ...string) func(http.Handler) http.Handler {
 }
 
 // RequirePlatformAdmin returns middleware that rejects requests from identities
-// bound to a specific system scope. Only unscoped identities (SystemID == "") —
-// platform administrators — may pass. Must be chained after Authentication.
+// that are not platform admins. Only identities with IsPlatformAdmin == true
+// may pass. Must be chained after Authentication.
 func RequirePlatformAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		identity, ok := auth.IdentityFromContext(r.Context())
@@ -59,7 +59,7 @@ func RequirePlatformAdmin(next http.Handler) http.Handler {
 			response.Error(w, apierr.Unauthorized("missing identity"))
 			return
 		}
-		if identity.SystemID != "" {
+		if !identity.IsPlatformAdmin {
 			response.Error(w, apierr.Forbidden("platform admin required"))
 			return
 		}
@@ -69,7 +69,7 @@ func RequirePlatformAdmin(next http.Handler) http.Handler {
 
 // RequireSystemScope returns middleware that verifies the caller is authorized
 // for the system identified by the given URL parameter. Platform admins
-// (empty SystemID) bypass the check — they have access to all systems.
+// bypass the check — they have access to all systems.
 func RequireSystemScope(paramName string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -80,13 +80,13 @@ func RequireSystemScope(paramName string) func(http.Handler) http.Handler {
 			}
 
 			// Platform admins have unrestricted system access.
-			if identity.SystemID == "" {
+			if identity.IsPlatformAdmin {
 				next.ServeHTTP(w, r)
 				return
 			}
 
 			requested := chi.URLParam(r, paramName)
-			if requested != "" && requested != identity.SystemID {
+			if requested != "" && identity.ActiveSystemID != nil && requested != identity.ActiveSystemID.String() {
 				response.Error(w, apierr.Forbidden("access denied to system "+requested))
 				return
 			}

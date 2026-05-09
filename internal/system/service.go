@@ -89,8 +89,8 @@ func (s *Service) Patch(ctx context.Context, id uuid.UUID, req PatchRequest) (*S
 		return nil, apierr.BadRequest("name cannot be empty")
 	}
 
-	if identity, ok := auth.IdentityFromContext(ctx); ok && identity.SystemID != "" {
-		if identity.SystemID != id.String() {
+	if identity, ok := auth.IdentityFromContext(ctx); ok && !identity.IsPlatformAdmin {
+		if identity.ActiveSystemID == nil || *identity.ActiveSystemID != id {
 			return nil, apierr.Forbidden("access denied to system " + id.String())
 		}
 		if req.Name != nil || req.Active != nil {

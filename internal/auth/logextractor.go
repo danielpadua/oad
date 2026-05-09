@@ -13,8 +13,8 @@ func IdentityExtractor(ctx context.Context) []slog.Attr {
 		return nil
 	}
 	attrs := []slog.Attr{slog.String("actor", id.Subject)}
-	if id.SystemID != "" {
-		attrs = append(attrs, slog.String("system_id", id.SystemID))
+	if id.ActiveSystemID != nil {
+		attrs = append(attrs, slog.String("system_id", id.ActiveSystemID.String()))
 	}
 	return attrs
 }

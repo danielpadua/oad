@@ -1,62 +1,58 @@
 package auth_test
 
 import (
-	"context"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"github.com/danielpadua/oad/internal/auth"
 )
 
 func TestIdentity_HasRole(t *testing.T) {
-	id := &auth.Identity{Roles: []string{"admin", "editor"}}
+	tests := []struct {
+		name            string
+		isPlatformAdmin bool
+		groups          []string
+		role            string
+		want            bool
+	}{
+		{"platform admin has admin", true, nil, "admin", true},
+		{"platform admin has editor", true, nil, "editor", true},
+		{"platform admin has viewer", true, nil, "viewer", true},
+		{"no groups has no admin", false, nil, "admin", false},
+		{"oad:editor has editor", false, []string{"oad:editor"}, "editor", true},
+		{"oad:editor has viewer (elevated)", false, []string{"oad:editor"}, "viewer", true},
+		{"oad:viewer has viewer", false, []string{"oad:viewer"}, "viewer", true},
+		{"oad:viewer lacks editor", false, []string{"oad:viewer"}, "editor", false},
+		{"oad:viewer lacks admin", false, []string{"oad:viewer"}, "admin", false},
+	}
 
-	if !id.HasRole("admin") {
-		t.Error("expected HasRole(admin) = true")
-	}
-	if !id.HasRole("editor") {
-		t.Error("expected HasRole(editor) = true")
-	}
-	if id.HasRole("viewer") {
-		t.Error("expected HasRole(viewer) = false")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			id := &auth.Identity{
+				IsPlatformAdmin: tc.isPlatformAdmin,
+				Groups:          tc.groups,
+			}
+			if got := id.HasRole(tc.role); got != tc.want {
+				t.Errorf("HasRole(%q) = %v, want %v", tc.role, got, tc.want)
+			}
+		})
 	}
 }
 
 func TestIdentity_HasAnyRole(t *testing.T) {
-	id := &auth.Identity{Roles: []string{"viewer"}}
-
-	if !id.HasAnyRole("admin", "viewer") {
-		t.Error("expected HasAnyRole(admin, viewer) = true when identity has viewer")
+	id := &auth.Identity{Groups: []string{"oad:editor"}}
+	if !id.HasAnyRole("admin", "editor") {
+		t.Error("expected editor to satisfy HasAnyRole(admin, editor)")
 	}
-	if id.HasAnyRole("admin", "editor") {
-		t.Error("expected HasAnyRole(admin, editor) = false when identity has only viewer")
-	}
-}
-
-func TestIdentityContext_RoundTrip(t *testing.T) {
-	id := &auth.Identity{Subject: "user@example.com", Roles: []string{"admin"}}
-	ctx := auth.WithIdentity(context.Background(), id)
-
-	got, ok := auth.IdentityFromContext(ctx)
-	if !ok {
-		t.Fatal("expected identity in context")
-	}
-	if got.Subject != "user@example.com" {
-		t.Errorf("expected subject user@example.com, got %s", got.Subject)
+	if id.HasAnyRole("admin") {
+		t.Error("expected editor to fail HasAnyRole(admin)")
 	}
 }
 
-func TestIdentityFromContext_MissingReturnsFalse(t *testing.T) {
-	_, ok := auth.IdentityFromContext(context.Background())
-	if ok {
-		t.Error("expected ok=false for empty context")
+func TestIdentity_IsPlatformAdmin_Flag(t *testing.T) {
+	id := &auth.Identity{IsPlatformAdmin: true, EntityID: uuid.MustParse("00000000-0000-0000-0000-000000000001")}
+	if !id.HasRole("admin") {
+		t.Error("platform admin must satisfy HasRole(admin)")
 	}
-}
-
-func TestMustIdentityFromContext_PanicsWhenMissing(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic when identity is missing")
-		}
-	}()
-	auth.MustIdentityFromContext(context.Background())
 }

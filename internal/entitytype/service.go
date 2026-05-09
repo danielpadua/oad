@@ -28,7 +28,7 @@ func requirePlatformAdminForGlobal(ctx context.Context, scope string) error {
 	if !ok {
 		return apierr.Unauthorized("missing identity")
 	}
-	if identity.SystemID != "" {
+	if !identity.IsPlatformAdmin {
 		return apierr.Forbidden("only platform admins may manage global entity types")
 	}
 	return nil

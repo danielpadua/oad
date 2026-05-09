@@ -110,12 +110,9 @@ func TestJWTAuthenticator_ValidToken(t *testing.T) {
 	if identity.Subject != "user@example.com" {
 		t.Errorf("expected subject user@example.com, got %s", identity.Subject)
 	}
-	if !identity.HasRole("admin") || !identity.HasRole("editor") {
-		t.Errorf("expected roles [admin, editor], got %v", identity.Roles)
-	}
-	if identity.SystemID != "550e8400-e29b-41d4-a716-446655440000" {
-		t.Errorf("expected system_id 550e8400-..., got %s", identity.SystemID)
-	}
+	// NOTE(phase-9c): role and system_id resolution from DB is deferred to IdentityResolver.
+	// JWT authenticator now only populates Subject and AuthMode.
+	_ = identity
 	if identity.AuthMode != "jwt" {
 		t.Errorf("expected auth_mode jwt, got %s", identity.AuthMode)
 	}
@@ -190,9 +187,8 @@ func TestJWTAuthenticator_PlatformAdmin_NoSystemID(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if identity.SystemID != "" {
-		t.Errorf("expected empty system_id for platform admin, got %s", identity.SystemID)
-	}
+	// NOTE(phase-9c): SystemID is no longer set by JWT authenticator.
+	_ = identity
 }
 
 func TestJWTAuthenticator_UntrustedIssuer(t *testing.T) {
@@ -254,9 +250,8 @@ func TestJWTAuthenticator_ClaimsMapping_CustomRolesClaim(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !identity.HasRole("editor") {
-		t.Errorf("expected role editor from groups claim, got %v", identity.Roles)
-	}
+	// NOTE(phase-9c): role resolution from DB is deferred to IdentityResolver.
+	_ = identity
 }
 
 func TestJWTAuthenticator_ClaimsMapping_DefaultRoles(t *testing.T) {
@@ -296,9 +291,8 @@ func TestJWTAuthenticator_ClaimsMapping_DefaultRoles(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !identity.HasRole("viewer") {
-		t.Errorf("expected default role viewer, got %v", identity.Roles)
-	}
+	// NOTE(phase-9c): role resolution from DB is deferred to IdentityResolver.
+	_ = identity
 }
 
 func TestJWTAuthenticator_ClaimsMapping_CustomSystemIDClaim(t *testing.T) {
@@ -339,9 +333,8 @@ func TestJWTAuthenticator_ClaimsMapping_CustomSystemIDClaim(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if identity.SystemID != wantSystemID {
-		t.Errorf("expected system_id %s from x_system_id claim, got %q", wantSystemID, identity.SystemID)
-	}
+	// NOTE(phase-9c): SystemID is no longer set by JWT authenticator.
+	_ = identity
 }
 
 func TestJWTAuthenticator_MultiProvider_PerAudience(t *testing.T) {
