@@ -67,25 +67,9 @@ type ProviderSCIM struct {
 }
 
 type ProviderBackend struct {
-	JWKSURL       string
-	Issuer        string
-	Audience      string
-	ClaimsMapping ClaimsMapping
-}
-
-// ClaimsMapping adapts an IdP's native token claims to OAD's identity model.
-// Leave fields empty to use OAD's defaults (oad_roles, oad_system_id).
-type ClaimsMapping struct {
-	// RolesClaim is the JWT claim that carries the user's roles.
-	// Defaults to "oad_roles" when empty.
-	RolesClaim string
-	// SystemIDClaim is the JWT claim for the scoped system UUID.
-	// Defaults to "oad_system_id" when empty.
-	SystemIDClaim string
-	// DefaultRoles are assigned when RolesClaim is absent from the token.
-	// Useful for IdPs that don't emit per-user role claims (e.g. Dex with
-	// staticPasswords, which doesn't support a groups claim).
-	DefaultRoles []string
+	JWKSURL  string
+	Issuer   string
+	Audience string
 }
 
 type ProviderWebUI struct {

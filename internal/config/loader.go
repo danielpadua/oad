@@ -26,7 +26,9 @@ func load(opts CLIOptions) (*Config, error) {
 	applyDefaults(cfg)
 
 	if fc != nil {
-		applyFile(cfg, fc)
+		if err := applyFile(cfg, fc); err != nil {
+			return nil, err
+		}
 	}
 
 	applyEnv(cfg)
@@ -50,7 +52,8 @@ func applyDefaults(cfg *Config) {
 }
 
 // applyFile overlays non-zero values from the parsed YAML file.
-func applyFile(cfg *Config, fc *fileConfig) {
+// Returns an error if the file contains any obsolete or rejected configuration keys.
+func applyFile(cfg *Config, fc *fileConfig) error {
 	if fc.Server.Addr != "" {
 		cfg.Server.Addr = fc.Server.Addr
 	}
@@ -72,30 +75,8 @@ func applyFile(cfg *Config, fc *fileConfig) {
 	if fc.Auth.MTLSHeader != "" {
 		cfg.Auth.MTLSHeader = fc.Auth.MTLSHeader
 	}
-	for _, fp := range fc.Auth.Providers {
-		cfg.Auth.Providers = append(cfg.Auth.Providers, ProviderConfig{
-			Name:        fp.Name,
-			DisplayName: fp.DisplayName,
-			Backend: ProviderBackend{
-				JWKSURL:  fp.Backend.JWKSURL,
-				Issuer:   fp.Backend.Issuer,
-				Audience: fp.Backend.Audience,
-				ClaimsMapping: ClaimsMapping{
-					RolesClaim:    fp.Backend.ClaimsMapping.RolesClaim,
-					SystemIDClaim: fp.Backend.ClaimsMapping.SystemIDClaim,
-					DefaultRoles:  fp.Backend.ClaimsMapping.DefaultRoles,
-				},
-			},
-			WebUI: ProviderWebUI{
-				Authority: fp.WebUI.Authority,
-				ClientID:  fp.WebUI.ClientID,
-				Scope:     fp.WebUI.Scope,
-			},
-			SCIM: ProviderSCIM{
-				Enabled: fp.SCIM.Enabled,
-				Token:   resolveSecretRef(fp.SCIM.Token),
-			},
-		})
+	if err := applyFileProviders(cfg, fc.Auth.Providers); err != nil {
+		return err
 	}
 	for _, ba := range fc.Auth.BootstrapAdmins {
 		cfg.Auth.BootstrapAdmins = append(cfg.Auth.BootstrapAdmins, BootstrapAdmin(ba))
@@ -112,6 +93,42 @@ func applyFile(cfg *Config, fc *fileConfig) {
 	if fc.Log.Format != "" {
 		cfg.Log.Format = fc.Log.Format
 	}
+	return nil
+}
+
+// applyFileProviders translates file-layer providers into Config providers,
+// rejecting any provider that still carries the obsolete claims_mapping field.
+func applyFileProviders(cfg *Config, fps []fileProviderConfig) error {
+	for i, fp := range fps {
+		if fp.Backend.ClaimsMapping.RolesClaim != "" ||
+			fp.Backend.ClaimsMapping.SystemIDClaim != "" ||
+			len(fp.Backend.ClaimsMapping.DefaultRoles) > 0 {
+			return fmt.Errorf(
+				"provider[%d] %q: 'claims_mapping' is obsolete — roles and system access are resolved "+
+					"from the entity/relation graph. Remove 'claims_mapping' from your config",
+				i, fp.Name,
+			)
+		}
+		cfg.Auth.Providers = append(cfg.Auth.Providers, ProviderConfig{
+			Name:        fp.Name,
+			DisplayName: fp.DisplayName,
+			Backend: ProviderBackend{
+				JWKSURL:  fp.Backend.JWKSURL,
+				Issuer:   fp.Backend.Issuer,
+				Audience: fp.Backend.Audience,
+			},
+			WebUI: ProviderWebUI{
+				Authority: fp.WebUI.Authority,
+				ClientID:  fp.WebUI.ClientID,
+				Scope:     fp.WebUI.Scope,
+			},
+			SCIM: ProviderSCIM{
+				Enabled: fp.SCIM.Enabled,
+				Token:   resolveSecretRef(fp.SCIM.Token),
+			},
+		})
+	}
+	return nil
 }
 
 // applyEnv overlays values from OAD_* environment variables.

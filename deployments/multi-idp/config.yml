@@ -41,10 +41,8 @@ auth:
         issuer: http://localhost:9000/application/o/oad/
         # Authentik sets aud to the requesting client_id for public clients.
         audience: oad-web-authentik
-        claims_mapping:
-          # Authentik's default User SCIM mapping emits group memberships
-          # under the `groups` claim. OAD maps it to roles here.
-          roles_claim: groups
+        # roles and system access are resolved from the entity/relation graph —
+        # claims_mapping is no longer supported and will be rejected at startup.
       webui:
         # External URL — used by the browser OIDC client.
         authority: http://localhost:9000/application/o/oad/
