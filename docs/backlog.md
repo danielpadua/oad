@@ -184,11 +184,11 @@
 
 > Sub-phases follow [db-authoritative-auth.md §15](design/db-authoritative-auth.md#15-phased-implementation-breakdown).
 
-100. [ ] C.1 — Identity resolver: `(provider, sub) → entity` lookup, group/system traversal, no cache yet; bootstrap admins via YAML; new `/api/v1/me` endpoint
-101. [ ] C.2 — Identity cache (LRU, 30s TTL, configurable) + invalidation hooks called from SCIM and admin handlers
-102. [ ] C.3 — `X-OAD-System-Id` header support; replace every `oad_system_id`-derived consumer with header-derived `ActiveSystemID`
-103. [ ] C.4 — Remove `oad_roles` / `oad_system_id` from `claims_mapping`; delete obsolete config code; reject the obsolete keys at startup with a clear error
-104. [ ] C.5 — Update authn/authz tests; rewrite data-model.md §4.8 to reflect DB-authoritative model; update CLAUDE.md
+100. [x] C.1 — Identity resolver: `(provider, sub) → entity` lookup, group/system traversal, no cache yet; bootstrap admins via YAML; new `/api/v1/me` endpoint
+101. [x] C.2 — Identity cache (LRU, 30s TTL, configurable) + invalidation hooks called from SCIM and admin handlers
+102. [x] C.3 — `X-OAD-System-Id` header support; replace every `oad_system_id`-derived consumer with header-derived `ActiveSystemID`
+103. [x] C.4 — Remove `oad_roles` / `oad_system_id` from `claims_mapping`; delete obsolete config code; reject the obsolete keys at startup with a clear error
+104. [x] C.5 — Update authn/authz tests; rewrite data-model.md §4.8 to reflect DB-authoritative model; update CLAUDE.md
 105. [ ] C.6 — UI: HTTP client attaches `X-OAD-System-Id` from active scope; `AuthContext` consumes new identity shape from `/api/v1/me`
 
 #### Phase 9.D — Admin UI for Users / Groups / Permissions
