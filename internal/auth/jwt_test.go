@@ -226,4 +226,12 @@ func TestJWTAuthenticator_AuthenticateRaw_MultiProvider(t *testing.T) {
 	if rawB.Provider != "idp-b" || rawB.Subject != "user-b" {
 		t.Errorf("provider B: got provider=%q subject=%q", rawB.Provider, rawB.Subject)
 	}
+
+	// Sub-test 3: token signed with provider B's key but wrong audience (aud-a)
+	// must be rejected — audience isolation across providers.
+	tokenBWrongAud := signToken(t, privB, "https://idp-b.test", "aud-a", "user-b", nil)
+	_, err = a.AuthenticateRaw(context.Background(), tokenBWrongAud)
+	if err == nil {
+		t.Error("token with wrong audience must be rejected, got nil error")
+	}
 }

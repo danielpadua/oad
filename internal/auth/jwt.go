@@ -44,6 +44,9 @@ func NewJWTAuthenticator(ctx context.Context, providers []Provider) (*JWTAuthent
 	byIssuer := make(map[string]Provider, len(providers))
 
 	for _, p := range providers {
+		if p.Name == "" {
+			return nil, fmt.Errorf("provider with issuer %q has empty name", p.Issuer)
+		}
 		if err := cache.Register(p.JWKSURL, jwk.WithMinRefreshInterval(15*time.Minute)); err != nil {
 			return nil, fmt.Errorf("registering JWKS URL %q: %w", p.JWKSURL, err)
 		}
