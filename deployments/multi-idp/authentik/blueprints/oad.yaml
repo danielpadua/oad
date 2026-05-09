@@ -81,6 +81,23 @@ entries:
         oad_external_id: authentik-pdp
 
   # ────────────────────────────────────────────────────────────────────
+  # Admin API Token
+  #
+  # A deterministic, non-expiring API token for the akadmin user.
+  # Used by the scim-sync-init container to call Authentik's admin API
+  # and trigger a full SCIM sync after all blueprints are applied.
+  # ────────────────────────────────────────────────────────────────────
+  - model: authentik_core.token
+    state: present
+    identifiers:
+      identifier: scim-sync-init-token
+    attrs:
+      user: !Find [authentik_core.user, [username, akadmin]]
+      intent: api
+      expiring: false
+      key: !Env [AUTHENTIK_SCIM_INIT_TOKEN, scim-init-bootstrap-token]
+
+  # ────────────────────────────────────────────────────────────────────
   # Groups
   #
   # The IdP-side groups that map onto OAD's role model. Authentik will

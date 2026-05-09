@@ -13,6 +13,12 @@
 # between Authentik and OAD via the env vars AUTHENTIK_OAD_SCIM_TOKEN
 # and OAD_SCIM_TOKEN_AUTHENTIK respectively (set them to the same
 # value — see .env.example).
+#
+# Bootstrap sync: The scim-sync-init container ensures deterministic
+# SCIM provisioning. It waits for all services to be healthy, then
+# triggers a full sync via Authentik's admin API. This eliminates a
+# race condition where Authentik's internal sync fires before all
+# blueprint Users are ready. See docs/design/scim-bootstrap-sync.md.
 
 services:
   api:
@@ -123,6 +129,7 @@ services:
       AUTHENTIK_BOOTSTRAP_PASSWORD: "${AUTHENTIK_BOOTSTRAP_PASSWORD:-akadmin}"
       AUTHENTIK_BOOTSTRAP_TOKEN: "${AUTHENTIK_BOOTSTRAP_TOKEN:-}"
       AUTHENTIK_OAD_SCIM_TOKEN: "${AUTHENTIK_OAD_SCIM_TOKEN:?set AUTHENTIK_OAD_SCIM_TOKEN in .env}"
+      AUTHENTIK_SCIM_INIT_TOKEN: "${AUTHENTIK_SCIM_INIT_TOKEN:-scim-init-bootstrap-token}"
       AUTHENTIK_BOOTSTRAP_USER_PW_ADMIN: "${AUTHENTIK_BOOTSTRAP_USER_PW_ADMIN:-admin}"
       AUTHENTIK_BOOTSTRAP_USER_PW_EDITOR: "${AUTHENTIK_BOOTSTRAP_USER_PW_EDITOR:-editor}"
       AUTHENTIK_BOOTSTRAP_USER_PW_VIEWER: "${AUTHENTIK_BOOTSTRAP_USER_PW_VIEWER:-viewer}"
@@ -168,6 +175,34 @@ services:
       authentik-redis:
         condition: service_healthy
     restart: unless-stopped
+
+  # ──────────────────────────────────────────────────────────────────────
+  # SCIM Bootstrap Init
+  #
+  # One-shot container that waits for Authentik + OAD to be ready, then
+  # triggers a full SCIM sync via Authentik's admin API. Ensures all
+  # blueprint Users, Groups, and memberships are provisioned into OAD
+  # regardless of Authentik's internal task scheduling.
+  # ──────────────────────────────────────────────────────────────────────
+  scim-sync-init:
+    image: postgres:15-alpine
+    entrypoint: ["/bin/sh", "/scripts/scim-sync-init.sh"]
+    volumes:
+      - ./scripts:/scripts:ro
+    environment:
+      AUTHENTIK_URL: http://authentik-server:9000
+      # Use the bootstrap token (created by Authentik before blueprints run)
+      # so scim-sync-init can authenticate on a fresh start without waiting
+      # for blueprint application (~5-10 min on first boot).
+      AUTHENTIK_API_TOKEN: "${AUTHENTIK_BOOTSTRAP_TOKEN:?set AUTHENTIK_BOOTSTRAP_TOKEN in .env}"
+      OAD_API_URL: http://api:8080
+      DATABASE_URL: "postgresql://oad:oad@postgres:5432/oad?sslmode=disable"
+    depends_on:
+      api:
+        condition: service_started
+      authentik-server:
+        condition: service_healthy
+    restart: "no"
 
 volumes:
   postgres_data:
