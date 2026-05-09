@@ -52,7 +52,7 @@ func TestResolver_Resolve_Success(t *testing.T) {
 	}
 	r := auth.NewIdentityResolver(repo)
 
-	id, err := r.Resolve(context.Background(), nil, "keycloak", "user-sub-123")
+	id, err := r.Resolve(context.Background(), "keycloak", "user-sub-123")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestResolver_Resolve_PlatformAdmin(t *testing.T) {
 		groups:   []string{"oad:admin"},
 	}
 	r := auth.NewIdentityResolver(repo)
-	id, err := r.Resolve(context.Background(), nil, "keycloak", "admin-sub")
+	id, err := r.Resolve(context.Background(), "keycloak", "admin-sub")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestResolver_Resolve_PlatformAdmin(t *testing.T) {
 func TestResolver_Resolve_NotProvisioned(t *testing.T) {
 	repo := &StubResolverRepo{entityErr: auth.ErrNotProvisioned}
 	r := auth.NewIdentityResolver(repo)
-	_, err := r.Resolve(context.Background(), nil, "keycloak", "unknown-sub")
+	_, err := r.Resolve(context.Background(), "keycloak", "unknown-sub")
 	if !errors.Is(err, auth.ErrNotProvisioned) {
 		t.Errorf("expected ErrNotProvisioned, got %v", err)
 	}
@@ -101,7 +101,7 @@ func TestResolver_Resolve_NotProvisioned(t *testing.T) {
 func TestResolver_Resolve_Disabled(t *testing.T) {
 	repo := &StubResolverRepo{entityID: testEntityID, active: false}
 	r := auth.NewIdentityResolver(repo)
-	_, err := r.Resolve(context.Background(), nil, "keycloak", "disabled-sub")
+	_, err := r.Resolve(context.Background(), "keycloak", "disabled-sub")
 	if !errors.Is(err, auth.ErrDisabled) {
 		t.Errorf("expected ErrDisabled, got %v", err)
 	}

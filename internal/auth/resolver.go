@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -44,9 +45,7 @@ func NewIdentityResolver(repo ResolverRepository) *IdentityResolver {
 }
 
 // Resolve builds an Identity from the entity/relation graph.
-// pool is accepted for consistency with callers that may pass nil during tests
-// using a stub repo. The actual pool is only used by pgxResolverRepository.
-func (r *IdentityResolver) Resolve(ctx context.Context, _ *pgxpool.Pool, provider, sub string) (*Identity, error) {
+func (r *IdentityResolver) Resolve(ctx context.Context, provider, sub string) (*Identity, error) {
 	entityID, err := r.repo.FindEntityID(ctx, provider, sub)
 	if err != nil {
 		return nil, err // ErrNotProvisioned propagates as-is
@@ -106,25 +105,27 @@ func (r *pgxResolverRepository) FindEntityID(ctx context.Context, providerName, 
 		providerName, externalSubject,
 	).Scan(&id)
 	if err != nil {
-		// pgx.ErrNoRows means the user has not been SCIM-provisioned yet.
-		return uuid.UUID{}, ErrNotProvisioned
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.UUID{}, ErrNotProvisioned
+		}
+		return uuid.UUID{}, fmt.Errorf("looking up entity for provider %q subject %q: %w", providerName, externalSubject, err)
 	}
 	return id, nil
 }
 
 func (r *pgxResolverRepository) IsActive(ctx context.Context, entityID uuid.UUID) (bool, error) {
-	var raw *bool
+	var active bool
 	err := r.pool.QueryRow(ctx,
-		`SELECT NULLIF(properties->>'active', '')::boolean FROM entity WHERE id = $1`,
+		`SELECT COALESCE((properties->>'active')::boolean, true) FROM entity WHERE id = $1`,
 		entityID,
-	).Scan(&raw)
+	).Scan(&active)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, ErrNotProvisioned
+		}
 		return false, fmt.Errorf("querying entity active flag: %w", err)
 	}
-	if raw == nil {
-		return true, nil // missing property treated as active per design §13
-	}
-	return *raw, nil
+	return active, nil
 }
 
 func (r *pgxResolverRepository) Groups(ctx context.Context, entityID uuid.UUID) ([]string, error) {
