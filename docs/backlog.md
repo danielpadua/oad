@@ -189,7 +189,7 @@
 102. [x] C.3 — `X-OAD-System-Id` header support; replace every `oad_system_id`-derived consumer with header-derived `ActiveSystemID`
 103. [x] C.4 — Remove `oad_roles` / `oad_system_id` from `claims_mapping`; delete obsolete config code; reject the obsolete keys at startup with a clear error
 104. [x] C.5 — Update authn/authz tests; rewrite data-model.md §4.8 to reflect DB-authoritative model; update CLAUDE.md
-105. [ ] C.6 — UI: HTTP client attaches `X-OAD-System-Id` from active scope; `AuthContext` consumes new identity shape from `/api/v1/me`
+105. [x] C.6 — UI: HTTP client attaches `X-OAD-System-Id` from active scope; `AuthContext` consumes new identity shape from `/api/v1/me`
 
 #### Phase 9.D — Admin UI for Users / Groups / Permissions
 
