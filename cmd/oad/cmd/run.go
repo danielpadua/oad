@@ -157,6 +157,9 @@ func runServer() error {
 	scimGroupsSvc := scimgroups.NewService(pool, scimGroupsRepo, auditSvc)
 	scimGroupsHandler := scimhandler.NewGroupsHandler(scimGroupsSvc)
 
+	scimUsersSvc.SetCacheInvalidator(identityCache)
+	scimGroupsSvc.SetCacheInvalidator(identityCache)
+
 	router := api.NewRouter(api.Dependencies{
 		DB:            pool,
 		Config:        cfg,

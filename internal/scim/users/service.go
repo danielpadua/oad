@@ -13,6 +13,12 @@ import (
 	"github.com/danielpadua/oad/internal/scim/parser"
 )
 
+// CacheInvalidator is implemented by auth.IdentityCache.
+// It allows the SCIM service to evict stale identity entries after mutations.
+type CacheInvalidator interface {
+	Invalidate(provider, sub string)
+}
+
 // Service orchestrates SCIM User operations. Each method runs inside its
 // own transaction so the entity, entity_external_identity, and audit_log
 // writes commit atomically (NFR-AUD-001 — no mutation without audit).
@@ -20,11 +26,17 @@ type Service struct {
 	pool  *pgxpool.Pool
 	repo  Repository
 	audit *audit.Service
+	cache CacheInvalidator // nil when invalidation not wired
 }
 
 // NewService returns a Service backed by the given pool and dependencies.
 func NewService(pool *pgxpool.Pool, repo Repository, auditSvc *audit.Service) *Service {
 	return &Service{pool: pool, repo: repo, audit: auditSvc}
+}
+
+// SetCacheInvalidator injects a cache invalidation hook. Call once at startup.
+func (s *Service) SetCacheInvalidator(inv CacheInvalidator) {
+	s.cache = inv
 }
 
 // scimActor builds the audit_log.actor for SCIM operations: "scim:<provider>".
@@ -178,6 +190,10 @@ func (s *Service) Replace(ctx context.Context, providerName string, id uuid.UUID
 		return nil, fmt.Errorf("commit: %w", err)
 	}
 
+	if s.cache != nil {
+		s.cache.Invalidate(providerName, before.ExternalSubject)
+	}
+
 	out := FromStored(StoredUser{
 		EntityID:        id,
 		Properties:      newProps,
@@ -245,6 +261,10 @@ func (s *Service) Patch(ctx context.Context, providerName string, id uuid.UUID, 
 		return nil, fmt.Errorf("commit: %w", err)
 	}
 
+	if s.cache != nil {
+		s.cache.Invalidate(providerName, before.ExternalSubject)
+	}
+
 	out := FromStored(StoredUser{
 		EntityID:        id,
 		Properties:      newProps,
@@ -290,5 +310,10 @@ func (s *Service) Delete(ctx context.Context, providerName string, id uuid.UUID)
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
+
+	if s.cache != nil {
+		s.cache.Invalidate(providerName, before.ExternalSubject)
+	}
+
 	return nil
 }
