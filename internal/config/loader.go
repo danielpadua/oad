@@ -95,6 +95,9 @@ func applyFile(cfg *Config, fc *fileConfig) {
 			},
 		})
 	}
+	for _, ba := range fc.Auth.BootstrapAdmins {
+		cfg.Auth.BootstrapAdmins = append(cfg.Auth.BootstrapAdmins, BootstrapAdmin(ba))
+	}
 	if fc.WebUI.RedirectURI != "" {
 		cfg.WebUI.RedirectURI = fc.WebUI.RedirectURI
 	}

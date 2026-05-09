@@ -31,9 +31,15 @@ type fileDatabaseConfig struct {
 }
 
 type fileAuthConfig struct {
-	Mode       string               `yaml:"mode"`
-	MTLSHeader string               `yaml:"mtls_header"`
-	Providers  []fileProviderConfig `yaml:"providers"`
+	Mode            string               `yaml:"mode"`
+	MTLSHeader      string               `yaml:"mtls_header"`
+	Providers       []fileProviderConfig `yaml:"providers"`
+	BootstrapAdmins []fileBootstrapAdmin `yaml:"bootstrap_admins"`
+}
+
+type fileBootstrapAdmin struct {
+	Provider string `yaml:"provider"`
+	Subject  string `yaml:"subject"`
 }
 
 type fileProviderConfig struct {
