@@ -17,389 +17,213 @@ import (
 	"github.com/danielpadua/oad/internal/auth"
 )
 
-// testJWKS starts an HTTP server serving a JWKS endpoint with the given
-// RSA public key and returns the server and key ID.
-func testJWKS(t *testing.T, pub *rsa.PublicKey) (srv *httptest.Server, kid string) {
+func generateTestKey(t *testing.T) (*rsa.PrivateKey, jwk.Key) {
 	t.Helper()
-	kid = "test-key-1"
-
-	key, err := jwk.FromRaw(pub)
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		t.Fatalf("creating JWK from public key: %v", err)
+		t.Fatal(err)
 	}
-	if err := key.Set(jwk.KeyIDKey, kid); err != nil {
-		t.Fatalf("setting kid: %v", err)
+	pubKey, err := jwk.PublicKeyOf(priv)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err := key.Set(jwk.AlgorithmKey, jwa.RS256); err != nil {
-		t.Fatalf("setting alg: %v", err)
+	if err := pubKey.Set(jwk.KeyIDKey, "test-key"); err != nil {
+		t.Fatal(err)
 	}
-
-	set := jwk.NewSet()
-	if err := set.AddKey(key); err != nil {
-		t.Fatalf("adding key to set: %v", err)
+	if err := pubKey.Set(jwk.AlgorithmKey, jwa.RS256); err != nil {
+		t.Fatal(err)
 	}
-
-	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(set)
-	}))
-	t.Cleanup(srv.Close)
-
-	return srv, kid
+	return priv, pubKey
 }
 
-func signToken(t *testing.T, privKey *rsa.PrivateKey, kid string, claims map[string]any) string {
+func jwksServer(t *testing.T, pubKey jwk.Key) *httptest.Server {
 	t.Helper()
-	builder := jwt.New()
-	for k, v := range claims {
-		if err := builder.Set(k, v); err != nil {
-			t.Fatalf("setting claim %q: %v", k, err)
-		}
+	set := jwk.NewSet()
+	if err := set.AddKey(pubKey); err != nil {
+		t.Fatal(err)
 	}
-
-	key, err := jwk.FromRaw(privKey)
+	raw, err := json.Marshal(set)
 	if err != nil {
-		t.Fatalf("creating JWK from private key: %v", err)
+		t.Fatal(err)
 	}
-	if err := key.Set(jwk.KeyIDKey, kid); err != nil {
-		t.Fatalf("setting kid: %v", err)
-	}
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(raw) //nolint:errcheck // test helper; response write error is irrelevant
+	}))
+}
 
-	signed, err := jwt.Sign(builder, jwt.WithKey(jwa.RS256, key))
+func signToken(t *testing.T, priv *rsa.PrivateKey, issuer, audience, sub string, extra map[string]any) string {
+	t.Helper()
+	b := jwt.NewBuilder().
+		Issuer(issuer).
+		Audience([]string{audience}).
+		Subject(sub).
+		IssuedAt(time.Now()).
+		Expiration(time.Now().Add(time.Hour))
+	for k, v := range extra {
+		b.Claim(k, v)
+	}
+	tok, err := b.Build()
 	if err != nil {
-		t.Fatalf("signing token: %v", err)
+		t.Fatal(err)
+	}
+	// Embed kid so the JWKS key lookup matches.
+	privJWK, err := jwk.FromRaw(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := privJWK.Set(jwk.KeyIDKey, "test-key"); err != nil {
+		t.Fatal(err)
+	}
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.RS256, privJWK))
+	if err != nil {
+		t.Fatal(err)
 	}
 	return string(signed)
 }
 
-func newSingleProviderAuthn(t *testing.T, jwksURL, issuer, audience string) *auth.JWTAuthenticator {
-	t.Helper()
-	authn, err := auth.NewJWTAuthenticator(context.Background(), []auth.Provider{
-		{JWKSURL: jwksURL, Issuer: issuer, Audience: audience},
+func TestJWTAuthenticator_AuthenticateRaw_ValidToken(t *testing.T) {
+	priv, pubKey := generateTestKey(t)
+	srv := jwksServer(t, pubKey)
+	defer srv.Close()
+
+	a, err := auth.NewJWTAuthenticator(context.Background(), []auth.Provider{
+		{Name: "test-idp", JWKSURL: srv.URL, Issuer: "https://idp.test", Audience: "oad-api"},
 	})
 	if err != nil {
-		t.Fatalf("creating authenticator: %v", err)
-	}
-	return authn
-}
-
-func TestJWTAuthenticator_ValidToken(t *testing.T) {
-	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("generating RSA key: %v", err)
+		t.Fatal(err)
 	}
 
-	srv, kid := testJWKS(t, &privKey.PublicKey)
-	authn := newSingleProviderAuthn(t, srv.URL, "https://idp.example.com", "oad-api")
-
-	token := signToken(t, privKey, kid, map[string]any{
-		"sub":           "user@example.com",
-		"iss":           "https://idp.example.com",
-		"aud":           []string{"oad-api"},
-		"exp":           time.Now().Add(time.Hour).Unix(),
-		"iat":           time.Now().Unix(),
-		"oad_roles":     []any{"admin", "editor"},
-		"oad_system_id": "550e8400-e29b-41d4-a716-446655440000",
-	})
-
-	identity, err := authn.Authenticate(context.Background(), token)
+	token := signToken(t, priv, "https://idp.test", "oad-api", "user-123", nil)
+	raw, err := a.AuthenticateRaw(context.Background(), token)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
-	if identity.Subject != "user@example.com" {
-		t.Errorf("expected subject user@example.com, got %s", identity.Subject)
+	if raw.Subject != "user-123" {
+		t.Errorf("subject = %q, want %q", raw.Subject, "user-123")
 	}
-	// NOTE(phase-9c): role and system_id resolution from DB is deferred to IdentityResolver.
-	// JWT authenticator now only populates Subject and AuthMode.
-	_ = identity
-	if identity.AuthMode != "jwt" {
-		t.Errorf("expected auth_mode jwt, got %s", identity.AuthMode)
+	if raw.Provider != "test-idp" {
+		t.Errorf("provider = %q, want %q", raw.Provider, "test-idp")
 	}
 }
 
-func TestJWTAuthenticator_ExpiredToken(t *testing.T) {
-	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+func TestJWTAuthenticator_AuthenticateRaw_IgnoresClaims(t *testing.T) {
+	priv, pubKey := generateTestKey(t)
+	srv := jwksServer(t, pubKey)
+	defer srv.Close()
+
+	a, err := auth.NewJWTAuthenticator(context.Background(), []auth.Provider{
+		{Name: "test-idp", JWKSURL: srv.URL, Issuer: "https://idp.test", Audience: "oad-api"},
+	})
 	if err != nil {
-		t.Fatalf("generating RSA key: %v", err)
+		t.Fatal(err)
 	}
 
-	srv, kid := testJWKS(t, &privKey.PublicKey)
-	authn := newSingleProviderAuthn(t, srv.URL, "https://idp.example.com", "oad-api")
-
-	token := signToken(t, privKey, kid, map[string]any{
-		"sub": "user@example.com",
-		"iss": "https://idp.example.com",
-		"aud": []string{"oad-api"},
-		"exp": time.Now().Add(-time.Hour).Unix(),
-		"iat": time.Now().Add(-2 * time.Hour).Unix(),
+	// Token with legacy claims — must be accepted without reading them.
+	token := signToken(t, priv, "https://idp.test", "oad-api", "user-456", map[string]any{
+		"oad_roles":     []string{"admin"},
+		"oad_system_id": "some-uuid",
 	})
+	raw, err := a.AuthenticateRaw(context.Background(), token)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if raw.Subject != "user-456" {
+		t.Errorf("subject = %q, want %q", raw.Subject, "user-456")
+	}
+}
 
-	_, err = authn.Authenticate(context.Background(), token)
+func TestJWTAuthenticator_AuthenticateRaw_UnknownIssuer(t *testing.T) {
+	priv, pubKey := generateTestKey(t)
+	srv := jwksServer(t, pubKey)
+	defer srv.Close()
+
+	a, err := auth.NewJWTAuthenticator(context.Background(), []auth.Provider{
+		{Name: "test-idp", JWKSURL: srv.URL, Issuer: "https://idp.test", Audience: "oad-api"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	token := signToken(t, priv, "https://evil.test", "oad-api", "attacker", nil)
+	_, err = a.AuthenticateRaw(context.Background(), token)
 	if err == nil {
-		t.Error("expected error for expired token")
+		t.Error("expected error for unknown issuer, got nil")
 	}
 }
 
-func TestJWTAuthenticator_WrongAudience(t *testing.T) {
-	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+func TestJWTAuthenticator_AuthenticateRaw_ExpiredToken(t *testing.T) {
+	priv, pubKey := generateTestKey(t)
+	srv := jwksServer(t, pubKey)
+	defer srv.Close()
+
+	a, err := auth.NewJWTAuthenticator(context.Background(), []auth.Provider{
+		{Name: "test-idp", JWKSURL: srv.URL, Issuer: "https://idp.test", Audience: "oad-api"},
+	})
 	if err != nil {
-		t.Fatalf("generating RSA key: %v", err)
+		t.Fatal(err)
 	}
 
-	srv, kid := testJWKS(t, &privKey.PublicKey)
-	authn := newSingleProviderAuthn(t, srv.URL, "https://idp.example.com", "oad-api")
+	// Build an already-expired token manually so we can control the expiry.
+	b := jwt.NewBuilder().
+		Issuer("https://idp.test").
+		Audience([]string{"oad-api"}).
+		Subject("user-expired").
+		IssuedAt(time.Now().Add(-2 * time.Hour)).
+		Expiration(time.Now().Add(-time.Hour))
+	tok, buildErr := b.Build()
+	if buildErr != nil {
+		t.Fatal(buildErr)
+	}
+	privJWK, jwkErr := jwk.FromRaw(priv)
+	if jwkErr != nil {
+		t.Fatal(jwkErr)
+	}
+	if setErr := privJWK.Set(jwk.KeyIDKey, "test-key"); setErr != nil {
+		t.Fatal(setErr)
+	}
+	signed, signErr := jwt.Sign(tok, jwt.WithKey(jwa.RS256, privJWK))
+	if signErr != nil {
+		t.Fatal(signErr)
+	}
 
-	token := signToken(t, privKey, kid, map[string]any{
-		"sub": "user@example.com",
-		"iss": "https://idp.example.com",
-		"aud": []string{"wrong-audience"},
-		"exp": time.Now().Add(time.Hour).Unix(),
-		"iat": time.Now().Unix(),
-	})
-
-	_, err = authn.Authenticate(context.Background(), token)
+	_, err = a.AuthenticateRaw(context.Background(), string(signed))
 	if err == nil {
-		t.Error("expected error for wrong audience")
+		t.Error("expected error for expired token, got nil")
 	}
 }
 
-func TestJWTAuthenticator_PlatformAdmin_NoSystemID(t *testing.T) {
-	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("generating RSA key: %v", err)
-	}
+func TestJWTAuthenticator_AuthenticateRaw_MultiProvider(t *testing.T) {
+	privA, pubA := generateTestKey(t)
+	privB, pubB := generateTestKey(t)
+	srvA := jwksServer(t, pubA)
+	srvB := jwksServer(t, pubB)
+	defer srvA.Close()
+	defer srvB.Close()
 
-	srv, kid := testJWKS(t, &privKey.PublicKey)
-	authn := newSingleProviderAuthn(t, srv.URL, "https://idp.example.com", "oad-api")
-
-	token := signToken(t, privKey, kid, map[string]any{
-		"sub":       "admin@example.com",
-		"iss":       "https://idp.example.com",
-		"aud":       []string{"oad-api"},
-		"exp":       time.Now().Add(time.Hour).Unix(),
-		"iat":       time.Now().Unix(),
-		"oad_roles": []any{"admin"},
-	})
-
-	identity, err := authn.Authenticate(context.Background(), token)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// NOTE(phase-9c): SystemID is no longer set by JWT authenticator.
-	_ = identity
-}
-
-func TestJWTAuthenticator_UntrustedIssuer(t *testing.T) {
-	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("generating RSA key: %v", err)
-	}
-
-	srv, kid := testJWKS(t, &privKey.PublicKey)
-	authn := newSingleProviderAuthn(t, srv.URL, "https://idp.example.com", "oad-api")
-
-	token := signToken(t, privKey, kid, map[string]any{
-		"sub": "attacker@evil.com",
-		"iss": "https://evil.com",
-		"aud": []string{"oad-api"},
-		"exp": time.Now().Add(time.Hour).Unix(),
-		"iat": time.Now().Unix(),
-	})
-
-	_, err = authn.Authenticate(context.Background(), token)
-	if err == nil {
-		t.Error("expected error for untrusted issuer")
-	}
-}
-
-func TestJWTAuthenticator_ClaimsMapping_CustomRolesClaim(t *testing.T) {
-	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("generating RSA key: %v", err)
-	}
-
-	srv, kid := testJWKS(t, &privKey.PublicKey)
-
-	authn, err := auth.NewJWTAuthenticator(context.Background(), []auth.Provider{
-		{
-			JWKSURL:  srv.URL,
-			Issuer:   "https://dex.example.com",
-			Audience: "oad-web-dex",
-			ClaimsMapping: auth.ClaimsMapping{
-				RolesClaim: "groups",
-			},
-		},
+	a, err := auth.NewJWTAuthenticator(context.Background(), []auth.Provider{
+		{Name: "idp-a", JWKSURL: srvA.URL, Issuer: "https://idp-a.test", Audience: "aud-a"},
+		{Name: "idp-b", JWKSURL: srvB.URL, Issuer: "https://idp-b.test", Audience: "aud-b"},
 	})
 	if err != nil {
-		t.Fatalf("creating authenticator: %v", err)
+		t.Fatal(err)
 	}
 
-	token := signToken(t, privKey, kid, map[string]any{
-		"sub":    "user@dex.example.com",
-		"iss":    "https://dex.example.com",
-		"aud":    []string{"oad-web-dex"},
-		"exp":    time.Now().Add(time.Hour).Unix(),
-		"iat":    time.Now().Unix(),
-		"groups": []any{"editor"},
-	})
-
-	identity, err := authn.Authenticate(context.Background(), token)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// NOTE(phase-9c): role resolution from DB is deferred to IdentityResolver.
-	_ = identity
-}
-
-func TestJWTAuthenticator_ClaimsMapping_DefaultRoles(t *testing.T) {
-	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("generating RSA key: %v", err)
-	}
-
-	srv, kid := testJWKS(t, &privKey.PublicKey)
-
-	authn, err := auth.NewJWTAuthenticator(context.Background(), []auth.Provider{
-		{
-			JWKSURL:  srv.URL,
-			Issuer:   "https://dex.example.com",
-			Audience: "oad-web-dex",
-			ClaimsMapping: auth.ClaimsMapping{
-				RolesClaim:   "groups",
-				DefaultRoles: []string{"viewer"},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("creating authenticator: %v", err)
-	}
-
-	// Token with no groups claim — default_roles must apply.
-	token := signToken(t, privKey, kid, map[string]any{
-		"sub": "user@dex.example.com",
-		"iss": "https://dex.example.com",
-		"aud": []string{"oad-web-dex"},
-		"exp": time.Now().Add(time.Hour).Unix(),
-		"iat": time.Now().Unix(),
-	})
-
-	identity, err := authn.Authenticate(context.Background(), token)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// NOTE(phase-9c): role resolution from DB is deferred to IdentityResolver.
-	_ = identity
-}
-
-func TestJWTAuthenticator_ClaimsMapping_CustomSystemIDClaim(t *testing.T) {
-	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("generating RSA key: %v", err)
-	}
-
-	srv, kid := testJWKS(t, &privKey.PublicKey)
-
-	authn, err := auth.NewJWTAuthenticator(context.Background(), []auth.Provider{
-		{
-			JWKSURL:  srv.URL,
-			Issuer:   "https://idp.example.com",
-			Audience: "oad-api",
-			ClaimsMapping: auth.ClaimsMapping{
-				SystemIDClaim: "x_system_id",
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("creating authenticator: %v", err)
-	}
-
-	const wantSystemID = "550e8400-e29b-41d4-a716-446655440000"
-	token := signToken(t, privKey, kid, map[string]any{
-		"sub":         "svc@example.com",
-		"iss":         "https://idp.example.com",
-		"aud":         []string{"oad-api"},
-		"exp":         time.Now().Add(time.Hour).Unix(),
-		"iat":         time.Now().Unix(),
-		"oad_roles":   []any{"viewer"},
-		"x_system_id": wantSystemID,
-	})
-
-	identity, err := authn.Authenticate(context.Background(), token)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// NOTE(phase-9c): SystemID is no longer set by JWT authenticator.
-	_ = identity
-}
-
-func TestJWTAuthenticator_MultiProvider_PerAudience(t *testing.T) {
-	privKeyA, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("generating RSA key A: %v", err)
-	}
-	privKeyB, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("generating RSA key B: %v", err)
-	}
-
-	srvA, kidA := testJWKS(t, &privKeyA.PublicKey)
-	srvB, kidB := testJWKS(t, &privKeyB.PublicKey)
-
-	authn, err := auth.NewJWTAuthenticator(context.Background(), []auth.Provider{
-		{JWKSURL: srvA.URL, Issuer: "https://idp-a.example.com", Audience: "audience-a"},
-		{JWKSURL: srvB.URL, Issuer: "https://idp-b.example.com", Audience: "audience-b"},
-	})
-	if err != nil {
-		t.Fatalf("creating authenticator: %v", err)
-	}
-
-	// Token from provider A with audience-a must be accepted.
-	tokenA := signToken(t, privKeyA, kidA, map[string]any{
-		"sub": "user-a@example.com",
-		"iss": "https://idp-a.example.com",
-		"aud": []string{"audience-a"},
-		"exp": time.Now().Add(time.Hour).Unix(),
-		"iat": time.Now().Unix(),
-	})
-	idA, err := authn.Authenticate(context.Background(), tokenA)
+	tokenA := signToken(t, privA, "https://idp-a.test", "aud-a", "user-a", nil)
+	rawA, err := a.AuthenticateRaw(context.Background(), tokenA)
 	if err != nil {
 		t.Fatalf("provider A token rejected: %v", err)
 	}
-	if idA.Subject != "user-a@example.com" {
-		t.Errorf("expected user-a, got %s", idA.Subject)
+	if rawA.Provider != "idp-a" || rawA.Subject != "user-a" {
+		t.Errorf("provider A: got provider=%q subject=%q", rawA.Provider, rawA.Subject)
 	}
 
-	// Token from provider B with audience-b must be accepted.
-	tokenB := signToken(t, privKeyB, kidB, map[string]any{
-		"sub": "user-b@example.com",
-		"iss": "https://idp-b.example.com",
-		"aud": []string{"audience-b"},
-		"exp": time.Now().Add(time.Hour).Unix(),
-		"iat": time.Now().Unix(),
-	})
-	idB, err := authn.Authenticate(context.Background(), tokenB)
+	tokenB := signToken(t, privB, "https://idp-b.test", "aud-b", "user-b", nil)
+	rawB, err := a.AuthenticateRaw(context.Background(), tokenB)
 	if err != nil {
 		t.Fatalf("provider B token rejected: %v", err)
 	}
-	if idB.Subject != "user-b@example.com" {
-		t.Errorf("expected user-b, got %s", idB.Subject)
-	}
-
-	// Token from provider A with audience-b must be rejected (wrong audience for issuer).
-	tokenAWrongAud := signToken(t, privKeyA, kidA, map[string]any{
-		"sub": "user-a@example.com",
-		"iss": "https://idp-a.example.com",
-		"aud": []string{"audience-b"},
-		"exp": time.Now().Add(time.Hour).Unix(),
-		"iat": time.Now().Unix(),
-	})
-	_, err = authn.Authenticate(context.Background(), tokenAWrongAud)
-	if err == nil {
-		t.Error("expected rejection for provider-A token with audience-b")
+	if rawB.Provider != "idp-b" || rawB.Subject != "user-b" {
+		t.Errorf("provider B: got provider=%q subject=%q", rawB.Provider, rawB.Subject)
 	}
 }

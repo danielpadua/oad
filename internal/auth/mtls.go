@@ -5,11 +5,9 @@ import (
 	"net/http"
 )
 
-// MTLSAuthenticator extracts identity from a client certificate presented
-// during mutual TLS. When TLS is terminated at a load balancer, the LB
-// forwards the client certificate in a configurable HTTP header.
+// MTLSAuthenticator extracts identity from a client certificate.
 type MTLSAuthenticator struct {
-	headerName string // e.g., "X-Client-Cert"
+	headerName string
 }
 
 // NewMTLSAuthenticator creates an authenticator that checks for a client
@@ -19,40 +17,43 @@ func NewMTLSAuthenticator(headerName string) *MTLSAuthenticator {
 	return &MTLSAuthenticator{headerName: headerName}
 }
 
-// Authenticate extracts the caller identity from the client certificate.
-// It checks the direct TLS peer certificates first; if none are present
-// (LB-terminated TLS), it reads the certificate CN from the configured header.
-//
-// For MVP, the CN becomes the Subject, and the identity receives no roles
-// or system scope — those must be mapped externally or via a lookup table
-// in a future iteration.
+// Authenticate returns an Identity from the client certificate. mTLS callers
+// are not resolved through the DB; roles derive from certificate OU fields
+// mapped to built-in group external IDs.
 func (a *MTLSAuthenticator) Authenticate(r *http.Request) (*Identity, error) {
-	// Direct TLS termination: peer certificates are available.
 	if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
 		cert := r.TLS.PeerCertificates[0]
-		ous := cert.Subject.OrganizationalUnit
-		isPlatformAdmin := false
-		for _, ou := range ous {
-			if ou == "admin" {
-				isPlatformAdmin = true
-				break
-			}
-		}
-		return &Identity{
-			Subject:         cert.Subject.CommonName,
-			IsPlatformAdmin: isPlatformAdmin,
-			AuthMode:        "mtls",
-		}, nil
+		return buildMTLSIdentity(cert.Subject.CommonName, cert.Subject.OrganizationalUnit), nil
 	}
 
-	// LB-terminated TLS: the load balancer forwards the client CN in a header.
 	cn := r.Header.Get(a.headerName)
 	if cn == "" {
 		return nil, errors.New("no client certificate presented")
 	}
+	return buildMTLSIdentity(cn, nil), nil
+}
 
-	return &Identity{
+// buildMTLSIdentity synthesises an Identity from a certificate CN and OUs.
+// OUs are mapped to built-in group external IDs:
+//
+//	"admin"  → IsPlatformAdmin = true
+//	"editor" → Groups includes "oad:editor"
+//	"viewer" → Groups includes "oad:viewer"
+func buildMTLSIdentity(cn string, ous []string) *Identity {
+	id := &Identity{
 		Subject:  cn,
+		Provider: "mtls",
 		AuthMode: "mtls",
-	}, nil
+	}
+	for _, ou := range ous {
+		switch ou {
+		case "admin":
+			id.IsPlatformAdmin = true
+		case "editor":
+			id.Groups = append(id.Groups, "oad:editor")
+		case "viewer":
+			id.Groups = append(id.Groups, "oad:viewer")
+		}
+	}
+	return id
 }

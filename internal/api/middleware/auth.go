@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -50,20 +51,27 @@ func Authentication(jwtAuth *auth.JWTAuthenticator, mtlsAuth *auth.MTLSAuthentic
 	}
 }
 
-// authenticateJWT extracts the Bearer token from the Authorization header
-// and delegates validation to the JWTAuthenticator.
+// authenticateJWT extracts the Bearer token from the Authorization header,
+// validates its signature via AuthenticateRaw, then returns a stub error
+// because the DB identity resolver is not yet wired (phase 9.C task 5).
+//
+//nolint:unparam // first return is always nil until the resolver is wired in task 5
 func authenticateJWT(jwtAuth *auth.JWTAuthenticator, r *http.Request) (*auth.Identity, error) {
 	header := r.Header.Get("Authorization")
 	if header == "" {
 		return nil, errMissingAuth
 	}
-
 	token, found := strings.CutPrefix(header, "Bearer ")
 	if !found {
 		return nil, errMissingAuth
 	}
-
-	return jwtAuth.Authenticate(r.Context(), token)
+	// Validate the token signature and extract provider+subject.
+	// Full DB identity resolution is wired in Task 5 (phase 9.C).
+	if _, err := jwtAuth.AuthenticateRaw(r.Context(), token); err != nil {
+		return nil, err
+	}
+	// TODO(phase-9c-task5): call resolver.Resolve(ctx, pool, raw.Provider, raw.Subject)
+	return nil, fmt.Errorf("identity resolver not yet wired (phase 9.C task 5)")
 }
 
 var errMissingAuth = &authError{msg: "missing or malformed Authorization header"}

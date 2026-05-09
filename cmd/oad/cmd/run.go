@@ -29,6 +29,7 @@ import (
 	scimhandler "github.com/danielpadua/oad/internal/scim/handler"
 	scimusers "github.com/danielpadua/oad/internal/scim/users"
 	"github.com/danielpadua/oad/internal/system"
+	"github.com/danielpadua/oad/internal/useradmin"
 	"github.com/danielpadua/oad/internal/webhook"
 	"github.com/danielpadua/oad/internal/webui"
 	"github.com/danielpadua/oad/migrations"
@@ -141,6 +142,10 @@ func runServer() error {
 	webhookSvc := webhook.NewService(pool, webhookRepo, auditSvc)
 	webhookDispatcher := webhook.NewDispatcher(pool, webhookRepo, slog.Default())
 
+	userAdminRepo := useradmin.NewRepository()
+	userAdminSvc := useradmin.NewService(pool, userAdminRepo)
+	usersHandler := handler.NewUsersHandler(userAdminSvc)
+
 	scimRegistry, err := buildSCIMRegistry(cfg.Auth.Providers)
 	if err != nil {
 		return fmt.Errorf("initializing SCIM registry: %w", err)
@@ -177,6 +182,8 @@ func runServer() error {
 		StatsHandler: handler.NewStatsHandler(pool),
 
 		ConfigHandler: handler.NewConfigHandler(cfg),
+
+		UsersHandler: usersHandler,
 
 		SCIMRegistry:      scimRegistry,
 		SCIMUsersHandler:  scimUsersHandler,
@@ -266,14 +273,10 @@ func buildJWTAuthenticator(ctx context.Context, providers []config.ProviderConfi
 	authProviders := make([]auth.Provider, len(providers))
 	for i, p := range providers {
 		authProviders[i] = auth.Provider{
+			Name:     p.Name,
 			JWKSURL:  p.Backend.JWKSURL,
 			Issuer:   p.Backend.Issuer,
 			Audience: p.Backend.Audience,
-			ClaimsMapping: auth.ClaimsMapping{
-				RolesClaim:    p.Backend.ClaimsMapping.RolesClaim,
-				SystemIDClaim: p.Backend.ClaimsMapping.SystemIDClaim,
-				DefaultRoles:  p.Backend.ClaimsMapping.DefaultRoles,
-			},
 		}
 	}
 	return auth.NewJWTAuthenticator(ctx, authProviders)
