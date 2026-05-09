@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -47,7 +48,8 @@ func Authentication(
 					response.Error(w, apierr.Unauthorized("account is disabled"))
 					return
 				}
-				response.Error(w, apierr.Unauthorized("authentication failed: "+err.Error()))
+				slog.WarnContext(r.Context(), "authentication failed", "err", err)
+				response.Error(w, apierr.Unauthorized("authentication failed"))
 				return
 			}
 

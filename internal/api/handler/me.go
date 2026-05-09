@@ -3,6 +3,8 @@ package handler
 import (
 	"net/http"
 
+	"github.com/google/uuid"
+
 	"github.com/danielpadua/oad/internal/api/response"
 	"github.com/danielpadua/oad/internal/auth"
 )
@@ -37,10 +39,15 @@ func (h *MeHandler) Get(w http.ResponseWriter, r *http.Request) {
 		groups = []string{}
 	}
 
+	entityID := ""
+	if identity.EntityID != (uuid.UUID{}) {
+		entityID = identity.EntityID.String()
+	}
+
 	resp := MeResponse{
 		Sub:             identity.Subject,
 		Provider:        identity.Provider,
-		EntityID:        identity.EntityID.String(),
+		EntityID:        entityID,
 		Groups:          groups,
 		IsPlatformAdmin: identity.IsPlatformAdmin,
 		AllowedSystems:  allowedSystems,
