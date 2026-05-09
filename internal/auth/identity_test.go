@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/google/uuid"
@@ -55,4 +56,50 @@ func TestIdentity_IsPlatformAdmin_Flag(t *testing.T) {
 	if !id.HasRole("admin") {
 		t.Error("platform admin must satisfy HasRole(admin)")
 	}
+}
+
+func TestIdentity_ActorString_WithEntityID(t *testing.T) {
+	id := &auth.Identity{
+		Subject:  "user@example.com",
+		EntityID: uuid.MustParse("11111111-0000-0000-0000-000000000001"),
+	}
+	want := "user:11111111-0000-0000-0000-000000000001"
+	if got := id.ActorString(); got != want {
+		t.Errorf("ActorString() = %q, want %q", got, want)
+	}
+}
+
+func TestIdentity_ActorString_NoEntityID(t *testing.T) {
+	id := &auth.Identity{Subject: "service-account-cn"}
+	if got := id.ActorString(); got != "service-account-cn" {
+		t.Errorf("ActorString() = %q, want %q", got, "service-account-cn")
+	}
+}
+
+func TestIdentityContext_RoundTrip(t *testing.T) {
+	original := &auth.Identity{Subject: "test-sub", IsPlatformAdmin: true}
+	ctx := auth.WithIdentity(context.Background(), original)
+	got, ok := auth.IdentityFromContext(ctx)
+	if !ok {
+		t.Fatal("IdentityFromContext returned ok=false")
+	}
+	if got != original {
+		t.Error("IdentityFromContext returned different pointer than stored")
+	}
+}
+
+func TestIdentityFromContext_MissingReturnsFalse(t *testing.T) {
+	_, ok := auth.IdentityFromContext(context.Background())
+	if ok {
+		t.Error("expected ok=false for empty context")
+	}
+}
+
+func TestMustIdentityFromContext_PanicsWhenMissing(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic, got none")
+		}
+	}()
+	auth.MustIdentityFromContext(context.Background())
 }

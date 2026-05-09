@@ -68,8 +68,10 @@ func RequirePlatformAdmin(next http.Handler) http.Handler {
 }
 
 // RequireSystemScope returns middleware that verifies the caller is authorized
-// for the system identified by the given URL parameter. Platform admins
-// bypass the check — they have access to all systems.
+// for the system identified by the given URL parameter. Platform admins bypass.
+// NOTE: Until IdentityResolver is wired (phase 9.C Task 9), non-admin callers
+// have nil ActiveSystemID and this check passes through. The gap is closed when
+// X-OAD-System-Id header validation populates ActiveSystemID.
 func RequireSystemScope(paramName string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

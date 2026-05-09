@@ -15,7 +15,7 @@ type Identity struct {
 	Provider        string      // Matched auth.providers[].name; "mtls" for mTLS callers.
 	EntityID        uuid.UUID   // entity.id of the User; zero for mTLS callers without a DB entity.
 	Groups          []string    // external_id values of all Groups the user is member_of.
-	AllowedSystems  []uuid.UUID // entity.id of every System the user can access.
+	AllowedSystems  []uuid.UUID // entity.id of every System the user can access; enforced by RequireSystemScope once IdentityResolver is wired (phase 9.C Task 9).
 	IsPlatformAdmin bool        // true iff "oad:admin" is in Groups (or mTLS cert has admin OU).
 	ActiveSystemID  *uuid.UUID  // Selected via X-OAD-System-Id header; nil on non-scoped routes.
 	AuthMode        string      // "jwt" or "mtls" — for audit and diagnostics.
