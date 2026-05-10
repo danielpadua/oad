@@ -128,13 +128,15 @@ func NewRouter(deps Dependencies) http.Handler {
 		// All schema registry endpoints require the "admin" role.
 
 		// Entity type definitions: global schema registry.
+		// Reads are open to all authenticated roles — system-admin and editor users
+		// need the type list to create overlay schemas and entities.
+		// Writes are restricted to platform admins.
 		r.Route("/entity-types", func(r chi.Router) {
-			r.Use(middleware.RequireRole("admin"))
 			r.Get("/", deps.EntityTypeHandler.List)
-			r.Post("/", deps.EntityTypeHandler.Create)
+			r.With(middleware.RequirePlatformAdmin).Post("/", deps.EntityTypeHandler.Create)
 			r.Get("/{type_id}", deps.EntityTypeHandler.GetByID)
-			r.Put("/{type_id}", deps.EntityTypeHandler.Update)
-			r.Delete("/{type_id}", deps.EntityTypeHandler.Delete)
+			r.With(middleware.RequirePlatformAdmin).Put("/{type_id}", deps.EntityTypeHandler.Update)
+			r.With(middleware.RequirePlatformAdmin).Delete("/{type_id}", deps.EntityTypeHandler.Delete)
 		})
 
 		// Systems and their overlay schemas.
