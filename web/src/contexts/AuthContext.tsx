@@ -11,7 +11,8 @@ export interface AuthIdentity {
   email?: string;
   name?: string;
   isPlatformAdmin: boolean;
-  /** Built-in group external IDs (e.g. "oad:admin", "oad:editor", "oad:viewer"). */
+  isSystemAdmin: boolean;
+  /** Built-in group external IDs (e.g. "oad:admin", "oad:system-admin", "oad:editor", "oad:viewer"). */
   groups: string[];
   allowedSystems: string[];
   /** Currently active system UUID; null means no system scope selected. */
@@ -38,6 +39,7 @@ async function fetchMeIdentity(user: User): Promise<AuthIdentity | null> {
     return {
       sub: me.sub,
       isPlatformAdmin: me.is_platform_admin,
+      isSystemAdmin: !me.is_platform_admin && me.groups.includes("oad:system-admin"),
       groups: me.groups,
       allowedSystems: me.allowed_systems,
       activeSystemId,

@@ -13,6 +13,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { Dock } from "@/components/reactbits";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface SidebarProps {
   onNavigate?: () => void;
@@ -20,18 +21,22 @@ interface SidebarProps {
 
 export function Sidebar({ onNavigate }: SidebarProps) {
   const { t } = useTranslation();
+  const { identity } = useAuth();
+  const isPlatformAdmin = identity?.isPlatformAdmin ?? false;
 
-  const navItems = [
-    { to: "/", icon: LayoutDashboard, label: t("nav.dashboard") },
-    { to: "/entity-types", icon: FolderTree, label: t("nav.entityTypes") },
-    { to: "/systems", icon: Network, label: t("nav.systems") },
-    { to: "/entities", icon: Users, label: t("nav.entities") },
-    { to: "/users", icon: UserCog, label: t("nav.usersAdmin") },
-    { to: "/overlays", icon: Layers, label: t("nav.overlays") },
-    { to: "/webhooks", icon: Webhook, label: t("nav.webhooks") },
-    { to: "/audit", icon: ScrollText, label: t("nav.auditLog") },
-    { to: "/settings", icon: Settings, label: t("nav.settings") },
+  const allNavItems = [
+    { to: "/", icon: LayoutDashboard, label: t("nav.dashboard"), adminOnly: false },
+    { to: "/entity-types", icon: FolderTree, label: t("nav.entityTypes"), adminOnly: true },
+    { to: "/systems", icon: Network, label: t("nav.systems"), adminOnly: false },
+    { to: "/entities", icon: Users, label: t("nav.entities"), adminOnly: false },
+    { to: "/users", icon: UserCog, label: t("nav.usersAdmin"), adminOnly: true },
+    { to: "/overlays", icon: Layers, label: t("nav.overlays"), adminOnly: false },
+    { to: "/webhooks", icon: Webhook, label: t("nav.webhooks"), adminOnly: false },
+    { to: "/audit", icon: ScrollText, label: t("nav.auditLog"), adminOnly: false },
+    { to: "/settings", icon: Settings, label: t("nav.settings"), adminOnly: true },
   ];
+
+  const navItems = allNavItems.filter((item) => !item.adminOnly || isPlatformAdmin);
 
   return (
     <aside className="flex w-16 flex-col items-center border-r border-border bg-card py-4 sm:w-16">
