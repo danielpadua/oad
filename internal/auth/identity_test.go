@@ -13,25 +13,35 @@ func TestIdentity_HasRole(t *testing.T) {
 	tests := []struct {
 		name            string
 		isPlatformAdmin bool
+		isSystemAdmin   bool
 		groups          []string
 		role            string
 		want            bool
 	}{
-		{"platform admin has admin", true, nil, "admin", true},
-		{"platform admin has editor", true, nil, "editor", true},
-		{"platform admin has viewer", true, nil, "viewer", true},
-		{"no groups has no admin", false, nil, "admin", false},
-		{"oad:editor has editor", false, []string{"oad:editor"}, "editor", true},
-		{"oad:editor has viewer (elevated)", false, []string{"oad:editor"}, "viewer", true},
-		{"oad:viewer has viewer", false, []string{"oad:viewer"}, "viewer", true},
-		{"oad:viewer lacks editor", false, []string{"oad:viewer"}, "editor", false},
-		{"oad:viewer lacks admin", false, []string{"oad:viewer"}, "admin", false},
+		{"platform admin has admin", true, false, nil, "admin", true},
+		{"platform admin has editor", true, false, nil, "editor", true},
+		{"platform admin has viewer", true, false, nil, "viewer", true},
+		{"no groups has no admin", false, false, nil, "admin", false},
+		{"oad:editor has editor", false, false, []string{"oad:editor"}, "editor", true},
+		{"oad:editor has viewer (elevated)", false, false, []string{"oad:editor"}, "viewer", true},
+		{"oad:viewer has viewer", false, false, []string{"oad:viewer"}, "viewer", true},
+		{"oad:viewer lacks editor", false, false, []string{"oad:viewer"}, "editor", false},
+		{"oad:viewer lacks admin", false, false, []string{"oad:viewer"}, "admin", false},
+		// system-admin role
+		{"platform admin has system-admin", true, false, nil, "system-admin", true},
+		{"system-admin flag has system-admin", false, true, nil, "system-admin", true},
+		{"system-admin flag has editor (elevated)", false, true, nil, "editor", true},
+		{"system-admin flag has viewer (elevated)", false, true, nil, "viewer", true},
+		{"system-admin flag lacks admin", false, true, nil, "admin", false},
+		{"oad:editor lacks system-admin", false, false, []string{"oad:editor"}, "system-admin", false},
+		{"oad:viewer lacks system-admin", false, false, []string{"oad:viewer"}, "system-admin", false},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			id := &auth.Identity{
 				IsPlatformAdmin: tc.isPlatformAdmin,
+				IsSystemAdmin:   tc.isSystemAdmin,
 				Groups:          tc.groups,
 			}
 			if got := id.HasRole(tc.role); got != tc.want {

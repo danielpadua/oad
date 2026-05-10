@@ -17,24 +17,28 @@ type Identity struct {
 	Groups          []string    // external_id values of all Groups the user is member_of.
 	AllowedSystems  []uuid.UUID // entity.id of every System the user can access; enforced by RequireSystemScope once IdentityResolver is wired (phase 9.C Task 9).
 	IsPlatformAdmin bool        // true iff "oad:admin" is in Groups (or mTLS cert has admin OU).
+	IsSystemAdmin   bool        // true iff "oad:system-admin" is in Groups (or IsPlatformAdmin).
 	ActiveSystemID  *uuid.UUID  // Selected via X-OAD-System-Id header; nil on non-scoped routes.
 	AuthMode        string      // "jwt" or "mtls" — for audit and diagnostics.
 }
 
 // HasRole reports whether the identity satisfies the named role.
-// Roles map to built-in group memberships:
+// Role hierarchy (each level includes all levels below):
 //
-//	"admin"  → IsPlatformAdmin
-//	"editor" → IsPlatformAdmin or "oad:editor" in Groups
-//	"viewer" → IsPlatformAdmin or "oad:editor" or "oad:viewer" in Groups
+//	"admin"        → IsPlatformAdmin
+//	"system-admin" → IsPlatformAdmin or IsSystemAdmin
+//	"editor"       → any of the above or "oad:editor" in Groups
+//	"viewer"       → any of the above or "oad:viewer" in Groups
 func (id *Identity) HasRole(role string) bool {
 	switch role {
 	case "admin":
 		return id.IsPlatformAdmin
+	case "system-admin":
+		return id.IsPlatformAdmin || id.IsSystemAdmin
 	case "editor":
-		return id.IsPlatformAdmin || id.hasGroup("oad:editor")
+		return id.IsPlatformAdmin || id.IsSystemAdmin || id.hasGroup("oad:editor")
 	case "viewer":
-		return id.IsPlatformAdmin || id.hasGroup("oad:editor") || id.hasGroup("oad:viewer")
+		return id.IsPlatformAdmin || id.IsSystemAdmin || id.hasGroup("oad:editor") || id.hasGroup("oad:viewer")
 	}
 	return false
 }
