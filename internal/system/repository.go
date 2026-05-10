@@ -99,6 +99,11 @@ func (r *pgxRepository) GetByID(ctx context.Context, q db.DBTX, id uuid.UUID) (*
 }
 
 func (r *pgxRepository) List(ctx context.Context, q db.DBTX, allowedIDs []uuid.UUID) ([]*System, error) {
+	// nil means no filter (platform admin); empty non-nil means no access (return nothing).
+	if allowedIDs != nil && len(allowedIDs) == 0 {
+		return []*System{}, nil
+	}
+
 	var (
 		rows pgx.Rows
 		err  error
