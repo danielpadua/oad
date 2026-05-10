@@ -78,9 +78,11 @@ func (r *IdentityResolver) Resolve(ctx context.Context, provider, sub string) (*
 		AuthMode:       "jwt",
 	}
 	for _, g := range groups {
-		if g == "oad:admin" {
+		switch g {
+		case "oad:admin":
 			id.IsPlatformAdmin = true
-			break
+		case "oad:system-admin":
+			id.IsSystemAdmin = true
 		}
 	}
 
@@ -132,9 +134,10 @@ func (r *pgxResolverRepository) Groups(ctx context.Context, entityID uuid.UUID) 
 	rows, err := r.pool.Query(ctx,
 		`SELECT
 		   CASE
-		     WHEN e.external_id LIKE 'scim:%' AND e.properties->>'displayName' = 'oad-admin'  THEN 'oad:admin'
-		     WHEN e.external_id LIKE 'scim:%' AND e.properties->>'displayName' = 'oad-editor' THEN 'oad:editor'
-		     WHEN e.external_id LIKE 'scim:%' AND e.properties->>'displayName' = 'oad-viewer' THEN 'oad:viewer'
+		     WHEN e.external_id LIKE 'scim:%' AND e.properties->>'displayName' = 'oad-admin'        THEN 'oad:admin'
+		     WHEN e.external_id LIKE 'scim:%' AND e.properties->>'displayName' = 'oad-system-admin' THEN 'oad:system-admin'
+		     WHEN e.external_id LIKE 'scim:%' AND e.properties->>'displayName' = 'oad-editor'       THEN 'oad:editor'
+		     WHEN e.external_id LIKE 'scim:%' AND e.properties->>'displayName' = 'oad-viewer'       THEN 'oad:viewer'
 		     ELSE e.external_id
 		   END
 		 FROM relation rel
