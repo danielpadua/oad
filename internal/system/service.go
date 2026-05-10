@@ -66,9 +66,18 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*System, error) {
 	return sys, nil
 }
 
-// List returns all systems ordered by name.
+// List returns systems visible to the caller.
+// Platform admins see all systems. Non-platform-admins see only systems
+// they have a has_role_in relation to (their AllowedSystems).
 func (s *Service) List(ctx context.Context) ([]*System, error) {
-	items, err := s.repo.List(ctx, s.pool)
+	var allowedIDs []uuid.UUID
+	if identity, ok := auth.IdentityFromContext(ctx); ok && !identity.IsPlatformAdmin {
+		allowedIDs = identity.AllowedSystems
+		if allowedIDs == nil {
+			allowedIDs = []uuid.UUID{} // empty slice → query returns no rows
+		}
+	}
+	items, err := s.repo.List(ctx, s.pool, allowedIDs)
 	if err != nil {
 		return nil, fmt.Errorf("listing systems: %w", err)
 	}

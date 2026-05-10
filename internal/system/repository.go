@@ -25,7 +25,7 @@ const systemTypeName = "System"
 type Repository interface {
 	Create(ctx context.Context, tx pgx.Tx, s *System) error
 	GetByID(ctx context.Context, q db.DBTX, id uuid.UUID) (*System, error)
-	List(ctx context.Context, q db.DBTX) ([]*System, error)
+	List(ctx context.Context, q db.DBTX, allowedIDs []uuid.UUID) ([]*System, error)
 	Update(ctx context.Context, tx pgx.Tx, s *System) error
 }
 
@@ -98,20 +98,41 @@ func (r *pgxRepository) GetByID(ctx context.Context, q db.DBTX, id uuid.UUID) (*
 	return s, nil
 }
 
-func (r *pgxRepository) List(ctx context.Context, q db.DBTX) ([]*System, error) {
-	rows, err := q.Query(ctx,
-		`SELECT e.id,
-		        COALESCE(e.properties->>'name', '')        AS name,
-		        COALESCE(e.properties->>'description', '') AS description,
-		        COALESCE((e.properties->>'active')::bool, true) AS active,
-		        e.created_at,
-		        e.updated_at
-		 FROM entity e
-		 JOIN entity_type_definition t ON t.id = e.type_id
-		 WHERE t.type_name = $1
-		 ORDER BY e.properties->>'name'`,
-		systemTypeName,
+func (r *pgxRepository) List(ctx context.Context, q db.DBTX, allowedIDs []uuid.UUID) ([]*System, error) {
+	var (
+		rows pgx.Rows
+		err  error
 	)
+	if len(allowedIDs) > 0 {
+		rows, err = q.Query(ctx,
+			`SELECT e.id,
+			        COALESCE(e.properties->>'name', '')        AS name,
+			        COALESCE(e.properties->>'description', '') AS description,
+			        COALESCE((e.properties->>'active')::bool, true) AS active,
+			        e.created_at,
+			        e.updated_at
+			 FROM entity e
+			 JOIN entity_type_definition t ON t.id = e.type_id
+			 WHERE t.type_name = $1
+			   AND e.id = ANY($2)
+			 ORDER BY e.properties->>'name'`,
+			systemTypeName, allowedIDs,
+		)
+	} else {
+		rows, err = q.Query(ctx,
+			`SELECT e.id,
+			        COALESCE(e.properties->>'name', '')        AS name,
+			        COALESCE(e.properties->>'description', '') AS description,
+			        COALESCE((e.properties->>'active')::bool, true) AS active,
+			        e.created_at,
+			        e.updated_at
+			 FROM entity e
+			 JOIN entity_type_definition t ON t.id = e.type_id
+			 WHERE t.type_name = $1
+			 ORDER BY e.properties->>'name'`,
+			systemTypeName,
+		)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("querying systems: %w", err)
 	}
