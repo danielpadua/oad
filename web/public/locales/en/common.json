@@ -7,6 +7,7 @@
     "overlays": "Overlays",
     "auditLog": "Audit Log",
     "webhooks": "Webhooks",
+    "usersAdmin": "Users",
     "settings": "Settings"
   },
   "topbar": {
@@ -60,5 +61,24 @@
     "serverError": "An unexpected server error occurred.",
     "networkError": "Unable to reach the server. Check your connection.",
     "validationError": "Please correct the highlighted fields."
+  },
+  "usersAdmin": {
+    "title": "Users",
+    "subtitle": "Administer provisioned users, their identities, and soft-delete status.",
+    "searchPlaceholder": "Search users by email, name or ID...",
+    "userCountSingle": "user",
+    "userCountPlural": "users",
+    "emptyMessage": "No users found.",
+    "columns": {
+      "user": "User",
+      "email": "Email",
+      "status": "Status",
+      "identities": "Identities",
+      "createdAt": "Created At"
+    },
+    "status": {
+      "active": "Active",
+      "disabled": "Disabled"
+    }
   }
 }

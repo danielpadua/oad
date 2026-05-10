@@ -30,23 +30,29 @@ jobs:
         run: |
           docker compose -f deployments/multi-idp/docker-compose.yml up -d --build
 
-      - name: Wait for API healthcheck
+      - name: Wait for scim-sync-init to complete
         run: |
-          echo "Waiting for OAD API to become healthy..."
-          for i in {1..30}; do
-            if curl -s -f http://localhost:8080/health > /dev/null; then
-              echo "OAD API is healthy!"
-              break
+          echo "Waiting for scim-sync-init container to complete..."
+          # Follow the init container logs and wait for it to exit
+          timeout 300 docker compose -f deployments/multi-idp/docker-compose.yml logs -f scim-sync-init &
+          LOG_PID=$!
+
+          # Poll until the container exits
+          for i in {1..60}; do
+            STATUS=$(docker compose -f deployments/multi-idp/docker-compose.yml ps scim-sync-init --format '{{.State}}' 2>/dev/null || echo "unknown")
+            if [ "$STATUS" = "exited" ]; then
+              EXIT_CODE=$(docker compose -f deployments/multi-idp/docker-compose.yml ps scim-sync-init --format '{{.ExitCode}}' 2>/dev/null || echo "1")
+              kill $LOG_PID 2>/dev/null || true
+              if [ "$EXIT_CODE" = "0" ]; then
+                echo "scim-sync-init completed successfully!"
+                break
+              else
+                echo "scim-sync-init failed with exit code $EXIT_CODE"
+                exit 1
+              fi
             fi
-            sleep 2
+            sleep 5
           done
-          
-          # If curl failed even after retries, fail the build
-          curl -f http://localhost:8080/health || {
-            echo "API healthcheck failed. Container logs:"
-            docker compose -f deployments/multi-idp/docker-compose.yml logs api
-            exit 1
-          }
 
       - name: Run SCIM Integration Assertion
         run: go run scripts/assert_scim_ingest.go
@@ -56,5 +62,11 @@ jobs:
       - name: Dump logs on failure
         if: failure()
         run: |
-          echo "Dumping docker compose logs for debugging..."
-          docker compose -f deployments/multi-idp/docker-compose.yml logs
+          echo "=== scim-sync-init logs ==="
+          docker compose -f deployments/multi-idp/docker-compose.yml logs scim-sync-init
+          echo ""
+          echo "=== api logs ==="
+          docker compose -f deployments/multi-idp/docker-compose.yml logs api
+          echo ""
+          echo "=== authentik-worker logs ==="
+          docker compose -f deployments/multi-idp/docker-compose.yml logs authentik-worker

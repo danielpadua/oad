@@ -130,11 +130,17 @@ func (r *pgxResolverRepository) IsActive(ctx context.Context, entityID uuid.UUID
 
 func (r *pgxResolverRepository) Groups(ctx context.Context, entityID uuid.UUID) ([]string, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT e.external_id
+		`SELECT
+		   CASE
+		     WHEN e.external_id LIKE 'scim:%' AND e.properties->>'displayName' = 'oad-admin'  THEN 'oad:admin'
+		     WHEN e.external_id LIKE 'scim:%' AND e.properties->>'displayName' = 'oad-editor' THEN 'oad:editor'
+		     WHEN e.external_id LIKE 'scim:%' AND e.properties->>'displayName' = 'oad-viewer' THEN 'oad:viewer'
+		     ELSE e.external_id
+		   END
 		 FROM relation rel
-		 JOIN entity e ON e.id = rel.target_id
+		 JOIN entity e ON e.id = rel.target_entity_id
 		 JOIN entity_type_definition etd ON etd.id = e.type_id
-		 WHERE rel.subject_id = $1
+		 WHERE rel.subject_entity_id = $1
 		   AND rel.relation_type = 'member_of'
 		   AND etd.type_name = 'Group'`,
 		entityID,
@@ -185,13 +191,13 @@ func (r *pgxResolverRepository) AllowedSystems(ctx context.Context, entityID uui
 	subjectIDs = append(subjectIDs, groupIDs...)
 
 	rows, err := r.pool.Query(ctx,
-		`SELECT DISTINCT rel.target_id
+		`SELECT DISTINCT rel.target_entity_id
 		 FROM relation rel
-		 JOIN entity e ON e.id = rel.target_id
+		 JOIN entity e ON e.id = rel.target_entity_id
 		 JOIN entity_type_definition etd ON etd.id = e.type_id
 		 WHERE rel.relation_type = 'has_role_in'
 		   AND etd.type_name = 'System'
-		   AND rel.subject_id = ANY($1)`,
+		   AND rel.subject_entity_id = ANY($1)`,
 		subjectIDs,
 	)
 	if err != nil {

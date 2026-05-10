@@ -145,8 +145,8 @@ func (r *pgxBootstrapRepository) HasAdminRelation(ctx context.Context, entityID 
 	err := r.pool.QueryRow(ctx,
 		`SELECT EXISTS (
 			SELECT 1 FROM relation rel
-			JOIN entity g ON g.id = rel.target_id
-			WHERE rel.subject_id = $1
+			JOIN entity g ON g.id = rel.target_entity_id
+			WHERE rel.subject_entity_id = $1
 			  AND rel.relation_type = 'member_of'
 			  AND g.external_id = 'oad:admin'
 		)`,
@@ -164,7 +164,7 @@ func (r *pgxBootstrapRepository) CreateAdminRelation(ctx context.Context, entity
 
 	var relationID uuid.UUID
 	err = tx.QueryRow(ctx,
-		`INSERT INTO relation (subject_id, relation_type, target_id)
+		`INSERT INTO relation (subject_entity_id, relation_type, target_entity_id)
 		 SELECT $1, 'member_of', id FROM entity WHERE external_id = 'oad:admin'
 		 RETURNING id`,
 		entityID,

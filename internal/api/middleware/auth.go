@@ -43,11 +43,11 @@ func Authentication(
 
 			if err != nil {
 				if errors.Is(err, auth.ErrNotProvisioned) {
-					response.Error(w, apierr.Unauthorized("account not yet provisioned — try again in a moment"))
+					response.Error(w, apierr.ServiceUnavailable("account not yet provisioned — try again in a moment"))
 					return
 				}
 				if errors.Is(err, auth.ErrDisabled) {
-					response.Error(w, apierr.Unauthorized("account is disabled"))
+					response.Error(w, apierr.Forbidden("account is disabled"))
 					return
 				}
 				slog.WarnContext(r.Context(), "authentication failed", "err", err)

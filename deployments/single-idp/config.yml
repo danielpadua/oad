@@ -3,6 +3,11 @@
 
 auth:
   mode: jwt
+  # Bootstrap the Keycloak 'admin' user as platform admin on every fresh start.
+  # The UUID matches the fixture user ID seeded in keycloak/realm-export.json.
+  bootstrap_admins:
+    - provider: keycloak
+      subject: "11111111-1111-4111-a111-111111111111"
   providers:
     - name: keycloak
       display_name: Keycloak

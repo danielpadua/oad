@@ -23,6 +23,7 @@ const EntityFormPage = lazy(() => import("@/pages/EntityFormPage"));
 const Overlays = lazy(() => import("@/pages/Overlays"));
 const AuditLog = lazy(() => import("@/pages/AuditLog"));
 const Webhooks = lazy(() => import("@/pages/Webhooks"));
+const UsersAdmin = lazy(() => import("@/pages/UsersAdmin"));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -180,6 +181,14 @@ const protectedRoutes: RouteObject[] = [
     element: (
       <Protected>
         <Webhooks />
+      </Protected>
+    ),
+  },
+  {
+    path: "users",
+    element: (
+      <Protected>
+        <UsersAdmin />
       </Protected>
     ),
   },

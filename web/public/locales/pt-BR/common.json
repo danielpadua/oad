@@ -7,6 +7,7 @@
     "overlays": "Overlays",
     "auditLog": "Log de Auditoria",
     "webhooks": "Webhooks",
+    "usersAdmin": "Usuários",
     "settings": "Configurações"
   },
   "topbar": {
@@ -60,5 +61,24 @@
     "serverError": "Ocorreu um erro inesperado no servidor.",
     "networkError": "Não foi possível alcançar o servidor. Verifique sua conexão.",
     "validationError": "Por favor, corrija os campos destacados."
+  },
+  "usersAdmin": {
+    "title": "Usuários",
+    "subtitle": "Administre os usuários provisionados, suas identidades e status de exclusão lógica.",
+    "searchPlaceholder": "Buscar usuários por email, nome ou ID...",
+    "userCountSingle": "usuário",
+    "userCountPlural": "usuários",
+    "emptyMessage": "Nenhum usuário encontrado.",
+    "columns": {
+      "user": "Usuário",
+      "email": "Email",
+      "status": "Status",
+      "identities": "Identidades",
+      "createdAt": "Criado Em"
+    },
+    "status": {
+      "active": "Ativo",
+      "disabled": "Desativado"
+    }
   }
 }
