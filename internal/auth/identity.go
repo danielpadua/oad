@@ -3,6 +3,7 @@ package auth
 
 import (
 	"context"
+	"slices"
 
 	"github.com/google/uuid"
 )
@@ -45,21 +46,11 @@ func (id *Identity) HasRole(role string) bool {
 
 // HasAnyRole reports whether the identity satisfies at least one of the listed roles.
 func (id *Identity) HasAnyRole(roles ...string) bool {
-	for _, r := range roles {
-		if id.HasRole(r) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(roles, id.HasRole)
 }
 
 func (id *Identity) hasGroup(externalID string) bool {
-	for _, g := range id.Groups {
-		if g == externalID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(id.Groups, externalID)
 }
 
 // ActorString returns the canonical actor string for audit log entries.
