@@ -138,19 +138,36 @@ func NewRouter(deps Dependencies) http.Handler {
 		})
 
 		// Systems and their overlay schemas.
+		// Platform admins have full access.
+		// system-admin users can list/view/patch (description only) and manage overlay schemas
+		// for systems assigned via has_role_in.
+		// editor and viewer users can list and view their assigned systems (read-only).
 		r.Route("/systems", func(r chi.Router) {
-			r.Use(middleware.RequireRole("admin"))
-			r.Get("/", deps.SystemHandler.List)
-			// Registering a new system is a platform-level action: it carves out
-			// a new tenant, so only unscoped platform admins may perform it.
+			// List: all roles that have system assignments can see their systems.
+			// Service filters by AllowedSystems for non-platform-admins.
+			r.With(middleware.RequireAnyRole("admin", "system-admin", "editor", "viewer")).
+				Get("/", deps.SystemHandler.List)
+
+			// Create: registering a new system is a platform-level action.
 			r.With(middleware.RequirePlatformAdmin).Post("/", deps.SystemHandler.Create)
 
 			r.Route("/{system_id}", func(r chi.Router) {
-				r.Get("/", deps.SystemHandler.GetByID)
-				r.Patch("/", deps.SystemHandler.Patch)
+				// Detail: any role may view, but only their allowed systems.
+				r.With(
+					middleware.RequireAnyRole("admin", "system-admin", "editor", "viewer"),
+					middleware.RequirePathSystemInScope("system_id"),
+				).Get("/", deps.SystemHandler.GetByID)
 
-				// Overlay schemas nested under their owning system.
+				// Patch: system-admin and above; scoped to allowed systems.
+				r.With(
+					middleware.RequireAnyRole("admin", "system-admin"),
+					middleware.RequirePathSystemInScope("system_id"),
+				).Patch("/", deps.SystemHandler.Patch)
+
+				// Overlay schemas: system-admin and above, scoped to allowed systems.
 				r.Route("/overlay-schemas", func(r chi.Router) {
+					r.Use(middleware.RequireAnyRole("admin", "system-admin"))
+					r.Use(middleware.RequirePathSystemInScope("system_id"))
 					r.Get("/", deps.OverlaySchemaHandler.List)
 					r.Post("/", deps.OverlaySchemaHandler.Create)
 					r.Get("/{schema_id}", deps.OverlaySchemaHandler.GetByID)
@@ -158,11 +175,9 @@ func NewRouter(deps Dependencies) http.Handler {
 					r.Delete("/{schema_id}", deps.OverlaySchemaHandler.Delete)
 				})
 
-				// ── Phase 6 — Webhook Subscriptions ──────────────────────────
-				// Admin role is enforced by the parent /systems route group.
-				// RequireSystemScope further restricts system-scoped callers to
-				// their own system only (platform admins bypass this check).
+				// Webhook subscriptions: platform admin only, scoped via RequireSystemScope.
 				r.Route("/webhooks", func(r chi.Router) {
+					r.Use(middleware.RequireRole("admin"))
 					r.Use(middleware.RequireSystemScope("system_id"))
 					r.Get("/", deps.WebhookHandler.List)
 					r.Post("/", deps.WebhookHandler.Create)
