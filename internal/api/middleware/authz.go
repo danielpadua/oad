@@ -3,6 +3,9 @@ package middleware
 import (
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+
 	"github.com/danielpadua/oad/internal/api/response"
 	"github.com/danielpadua/oad/internal/apierr"
 	"github.com/danielpadua/oad/internal/auth"
@@ -63,6 +66,40 @@ func RequirePlatformAdmin(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// RequirePathSystemInScope returns middleware that verifies the UUID in the
+// given URL path parameter is within the caller's AllowedSystems.
+// Platform admins bypass the check. Returns 403 if the system is not allowed,
+// 400 if the path parameter is not a valid UUID.
+// Must be chained after Authentication middleware.
+func RequirePathSystemInScope(pathParam string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			identity, ok := auth.IdentityFromContext(r.Context())
+			if !ok {
+				response.Error(w, apierr.Unauthorized("missing identity"))
+				return
+			}
+			rawID := chi.URLParam(r, pathParam)
+			systemID, err := uuid.Parse(rawID)
+			if err != nil {
+				response.Error(w, apierr.BadRequest(pathParam+" must be a valid UUID"))
+				return
+			}
+			if identity.IsPlatformAdmin {
+				next.ServeHTTP(w, r)
+				return
+			}
+			for _, allowed := range identity.AllowedSystems {
+				if allowed == systemID {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+			response.Error(w, apierr.Forbidden("access denied to system "+rawID))
+		})
+	}
 }
 
 // RequireSystemScope requires the X-OAD-System-Id header to have been set
