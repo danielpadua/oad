@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"slices"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -91,11 +92,9 @@ func RequirePathSystemInScope(pathParam string) func(http.Handler) http.Handler 
 				next.ServeHTTP(w, r)
 				return
 			}
-			for _, allowed := range identity.AllowedSystems {
-				if allowed == systemID {
-					next.ServeHTTP(w, r)
-					return
-				}
+			if slices.Contains(identity.AllowedSystems, systemID) {
+				next.ServeHTTP(w, r)
+				return
 			}
 			response.Error(w, apierr.Forbidden("access denied to system "+rawID))
 		})
