@@ -1,5 +1,6 @@
 # Compiled binaries and programs
 bin/
+oad
 *.exe
 *.exe~
 *.dll
@@ -44,6 +45,11 @@ web/node_modules/
 # Embedded UI build output — keep only the placeholder index.html
 internal/webui/dist/*
 !internal/webui/dist/index.html
+
+# Tool runtime artifacts (Ruflo / AgentDB)
+.claude-flow/
+agentdb.rvf
+agentdb.rvf.lock
 
 # OS generated files (macOS / Windows)
 .DS_Store
